@@ -98,7 +98,7 @@ Stand at your desired duel lobby spawn and run:
    ```
 3. (Optional) Customize display name with MiniMessage formatting:
    ```
-   /kit rename nodebuff <color:#FFA500><bold>No Debuff</bold></color>
+   /kit rename nodebuff <color:#FFA500>No Debuff</color>
    ```
 
 ## Commands Summary

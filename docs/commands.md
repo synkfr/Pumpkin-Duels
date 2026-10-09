@@ -122,7 +122,7 @@ Kit management command to create, delete, edit, list, and rename duel kits.
 | `/kit delete <name>` | Permanently removes the kit from the database. |
 | `/kit edit <name>` | Overwrites the existing kit's inventory loadout with your current player inventory. |
 | `/kit list` | Lists all registered kits in the database with their display names. |
-| `/kit rename <name> <display_name>` | Updates the kit's display name. Supports full MiniMessage formatting (for example, `/kit rename nodebuff <color:#FFA500><bold>NoDebuff</bold></color>`). |
+| `/kit rename <name> <display_name>` | Updates the kit's display name. Supports full MiniMessage formatting (for example, `/kit rename nodebuff <color:#FFA500>NoDebuff</color>`). |
 
 ---
 

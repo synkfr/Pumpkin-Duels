@@ -119,7 +119,7 @@ Run `/pumpkin-duels reload` to apply configuration changes without restarting th
    ```
 3. Customize display name with MiniMessage formatting:
    ```
-   /kit rename nodebuff <color:#FFA500><bold>No Debuff</bold></color>
+   /kit rename nodebuff <color:#FFA500>No Debuff</color>
    ```
 4. Verify registered kits:
    ```

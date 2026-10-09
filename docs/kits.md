@@ -37,7 +37,7 @@ The plugin captures your current loadout and persists it to the database under t
 You can rename kits with rich colors, gradients, and formatting using MiniMessage:
 
 ```
-/kit rename nodebuff <color:#FFA500><bold>No Debuff</bold></color>
+/kit rename nodebuff <color:#FFA500>No Debuff</color>
 ```
 
 The formatted name is automatically translated into Minecraft color codes for GUI title and lore displays.

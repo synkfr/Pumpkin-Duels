@@ -155,7 +155,7 @@ impl DuelsService {
             {
                 challenger.send_system_message(
                     self.messages.component_raw(
-                        "<color:#E2B700>Please wait a moment before sending another duel request.</color>",
+                        "<color:#A0A0A0>Please wait a moment before sending another duel request.</color>",
                     ),
                     false,
                 );

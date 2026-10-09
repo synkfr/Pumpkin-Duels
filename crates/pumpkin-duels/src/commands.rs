@@ -395,7 +395,7 @@ impl CommandHandler for DuelStatsHandler {
             };
 
             let raw_msg = format!(
-                "<color:#E2B700><bold>Stats for {}:</bold></color>\n<color:#A0A0A0>ELO:</color> <color:#00E262>{}</color>\n<color:#A0A0A0>Wins:</color> <color:#00E262>{}</color> <color:#555555>|</color> <color:#A0A0A0>Losses:</color> <color:#E20000>{}</color>\n<color:#A0A0A0>Win Rate:</color> <color:#E2B700>{:.1}%</color>\n<color:#A0A0A0>Streak:</color> <color:#00E262>{}</color> <color:#555555>(Best: {})</color>",
+                "<color:#E2B700>Stats</color> <color:#555555>»</color> <color:#00E262>{}</color>\n<color:#A0A0A0>ELO:</color> <color:#00E262>{}</color>\n<color:#A0A0A0>Wins:</color> <color:#00E262>{}</color> <color:#555555>•</color> <color:#A0A0A0>Losses:</color> <color:#E20000>{}</color>\n<color:#A0A0A0>Win Rate:</color> <color:#E2B700>{:.1}%</color>\n<color:#A0A0A0>Streak:</color> <color:#00E262>{}</color> <color:#555555>(Best: {})</color>",
                 stats.name, stats.elo, stats.wins, stats.losses, winrate, stats.current_streak, stats.best_streak
             );
             send_feedback(&sender, &server, service.messages.component_raw(&raw_msg));
@@ -416,10 +416,10 @@ impl CommandHandler for DuelTopHandler {
         let service = get_service();
         match service.storage.get_top_players(10) {
             Ok(top) if !top.is_empty() => {
-                let mut msg = "<color:#E2B700><bold>Top 10 Duels Leaderboard:</bold></color>\n".to_string();
+                let mut msg = "<color:#E2B700>Leaderboard</color> <color:#555555>»</color> <color:#A0A0A0>Top 10</color>\n".to_string();
                 for (rank, p) in top.iter().enumerate() {
                     msg.push_str(&format!(
-                        "<color:#555555>{}.</color> <color:#00E262>{}</color> <color:#555555>-</color> <color:#E2B700>{} ELO</color> <color:#555555>({}W/{}L)</color>\n",
+                        "<color:#555555>{}.</color> <color:#00E262>{}</color> <color:#555555>•</color> <color:#E2B700>{} ELO</color> <color:#555555>({}W / {}L)</color>\n",
                         rank + 1, p.name, p.elo, p.wins, p.losses
                     ));
                 }
@@ -465,7 +465,7 @@ impl CommandHandler for SurrenderHandler {
         }
 
         crate::ui::show_surrender_confirmation(&player);
-        let prompt_msg = "<color:#E2B700>Please confirm forfeit in the dialog or run </color><color:#00E262>/surrender confirm</color>";
+        let prompt_msg = "<color:#A0A0A0>Please confirm forfeit in the dialog or run</color> <color:#00E262>/surrender confirm</color>";
         player.send_system_message(service.messages.component_raw(prompt_msg), false);
         Ok(0)
     }
@@ -658,7 +658,7 @@ impl CommandHandler for AdminArenaHelpHandler {
             send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
-        let raw = "<color:#E2B700><bold>Arena Commands:</bold></color>\n<color:#00E262>/arena create <name> [dimension]</color> <color:#A0A0A0>- Create a void arena template</color>\n<color:#00E262>/arena setspawn1 <name></color> <color:#A0A0A0>- Set player 1 spawn at your location</color>\n<color:#00E262>/arena setspawn2 <name></color> <color:#A0A0A0>- Set player 2 spawn at your location</color>\n<color:#00E262>/arena setspectator <name></color> <color:#A0A0A0>- Set spectator spawn at your location</color>\n<color:#00E262>/arena setbounds <name> [radius]</color> <color:#A0A0A0>- Set bounding radius</color>\n<color:#00E262>/arena tp <name></color> <color:#A0A0A0>- Teleport to arena template world</color>\n<color:#00E262>/arena leave</color> <color:#A0A0A0>- Return to lobby</color>\n<color:#00E262>/arena list</color> <color:#A0A0A0>- List all arenas</color>\n<color:#00E262>/arena delete <name></color> <color:#A0A0A0>- Delete arena</color>";
+        let raw = "<color:#E2B700>Arena Commands</color> <color:#555555>»</color>\n<color:#555555>•</color> <color:#00E262>/arena create <name> [dimension]</color> <color:#555555>-</color> <color:#A0A0A0>Create a void arena template</color>\n<color:#555555>•</color> <color:#00E262>/arena setspawn1 <name></color> <color:#555555>-</color> <color:#A0A0A0>Set player 1 spawn at your location</color>\n<color:#555555>•</color> <color:#00E262>/arena setspawn2 <name></color> <color:#555555>-</color> <color:#A0A0A0>Set player 2 spawn at your location</color>\n<color:#555555>•</color> <color:#00E262>/arena setspectator <name></color> <color:#555555>-</color> <color:#A0A0A0>Set spectator spawn at your location</color>\n<color:#555555>•</color> <color:#00E262>/arena setbounds <name> [radius]</color> <color:#555555>-</color> <color:#A0A0A0>Set bounding radius</color>\n<color:#555555>•</color> <color:#00E262>/arena tp <name></color> <color:#555555>-</color> <color:#A0A0A0>Teleport to arena template world</color>\n<color:#555555>•</color> <color:#00E262>/arena leave</color> <color:#555555>-</color> <color:#A0A0A0>Return to lobby</color>\n<color:#555555>•</color> <color:#00E262>/arena list</color> <color:#555555>-</color> <color:#A0A0A0>List all arenas</color>\n<color:#555555>•</color> <color:#00E262>/arena delete <name></color> <color:#555555>-</color> <color:#A0A0A0>Delete arena</color>";
         send_feedback(&sender, &server, service.messages.component_raw(raw));
         Ok(0)
     }
@@ -766,7 +766,7 @@ impl CommandHandler for AdminArenaCreateHandler {
 
         let _ = service.storage.save_arena(&template.into());
         let raw_msg = format!(
-            "<color:#00E262>Void arena <color:#E2B700>{arena_name}</color> created! World: <color:#E2B700>{world_name}</color>. Build your arena, then run <color:#00E262>/arena setspawn1 {arena_name}</color> and <color:#00E262>/arena setspawn2 {arena_name}</color>.</color>"
+            "<color:#00E262>Void arena</color> <color:#E2B700>{arena_name}</color> <color:#00E262>created!</color> <color:#555555>•</color> <color:#A0A0A0>World: {world_name}. Build your arena, then run</color> <color:#00E262>/arena setspawn1 {arena_name}</color> <color:#A0A0A0>and</color> <color:#00E262>/arena setspawn2 {arena_name}</color><color:#A0A0A0>.</color>"
         );
         send_feedback_success(&sender, &server, service.messages.component_raw(&raw_msg));
 
@@ -1110,7 +1110,7 @@ impl CommandHandler for AdminArenaTpHandler {
                 arena_world,
             );
 
-            let raw_msg = format!("<color:#00E262>Teleported to arena <color:#E2B700>{arena_name}</color>.</color>");
+            let raw_msg = format!("<color:#00E262>Teleported to arena</color> <color:#E2B700>{arena_name}</color><color:#00E262>.</color>");
             send_feedback_success(&sender, &server, service.messages.component_raw(&raw_msg));
         } else {
             let msg = service.messages.get_config().arena_not_found;
@@ -1222,10 +1222,10 @@ impl CommandHandler for AdminArenaListHandler {
 
         match service.storage.list_arenas() {
             Ok(arenas) if !arenas.is_empty() => {
-                let mut msg = format!("<color:#E2B700><bold>Configured Arenas ({}):</bold></color>\n", arenas.len());
+                let mut msg = format!("<color:#E2B700>Configured Arenas ({})</color> <color:#555555>»</color>\n", arenas.len());
                 for a in arenas {
                     msg.push_str(&format!(
-                        "<color:#00E262>•</color> <color:#A0A0A0>{}</color> <color:#707070>(world: {}, enabled: {})</color>\n",
+                        "<color:#555555>•</color> <color:#00E262>{}</color> <color:#555555>(world: {}, enabled: {})</color>\n",
                         a.name, a.template_world, a.enabled
                     ));
                 }
@@ -1254,7 +1254,7 @@ impl CommandHandler for KitHelpHandler {
             send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
-        let raw = "<color:#E2B700><bold>Kit Commands:</bold></color>\n<color:#00E262>/kit create <name></color> <color:#A0A0A0>- Save inventory as new kit</color>\n<color:#00E262>/kit delete <name></color> <color:#A0A0A0>- Delete kit</color>\n<color:#00E262>/kit edit <name></color> <color:#A0A0A0>- Overwrite kit items with current inventory</color>\n<color:#00E262>/kit list</color> <color:#A0A0A0>- List all kits</color>\n<color:#00E262>/kit rename <name> <new_name></color> <color:#A0A0A0>- Rename kit (MiniMessage supported)</color>";
+        let raw = "<color:#E2B700>Kit Commands</color> <color:#555555>»</color>\n<color:#555555>•</color> <color:#00E262>/kit create <name></color> <color:#555555>-</color> <color:#A0A0A0>Save inventory as new kit</color>\n<color:#555555>•</color> <color:#00E262>/kit delete <name></color> <color:#555555>-</color> <color:#A0A0A0>Delete kit</color>\n<color:#555555>•</color> <color:#00E262>/kit edit <name></color> <color:#555555>-</color> <color:#A0A0A0>Overwrite kit items with current inventory</color>\n<color:#555555>•</color> <color:#00E262>/kit list</color> <color:#555555>-</color> <color:#A0A0A0>List all kits</color>\n<color:#555555>•</color> <color:#00E262>/kit rename <name> <new_name></color> <color:#555555>-</color> <color:#A0A0A0>Rename kit (MiniMessage supported)</color>";
         send_feedback(&sender, &server, service.messages.component_raw(raw));
         Ok(0)
     }
@@ -1301,7 +1301,7 @@ impl CommandHandler for KitCreateHandler {
         };
 
         if let Ok(Some(_)) = service.find_kit(&kit_name) {
-            let raw = format!("<color:#E20000>Kit <color:#E2B700>{kit_name}</color> already exists. Use <color:#00E262>/kit edit {kit_name}</color> to update it.</color>");
+            let raw = format!("<color:#E20000>Kit</color> <color:#E2B700>{kit_name}</color> <color:#E20000>already exists.</color> <color:#555555>•</color> <color:#A0A0A0>Use</color> <color:#00E262>/kit edit {kit_name}</color> <color:#A0A0A0>to update it.</color>");
             send_feedback_error(&sender, &server, service.messages.component_raw(&raw));
             return Ok(0);
         }
@@ -1411,7 +1411,7 @@ impl CommandHandler for KitEditHandler {
         let existing = match service.find_kit(&kit_name) {
             Ok(Some(k)) => k,
             _ => {
-                let raw = format!("<color:#E20000>Kit <color:#E2B700>{kit_name}</color> was not found. Use <color:#00E262>/kit create {kit_name}</color> to create it.</color>");
+                let raw = format!("<color:#E20000>Kit</color> <color:#E2B700>{kit_name}</color> <color:#E20000>was not found.</color> <color:#555555>•</color> <color:#A0A0A0>Use</color> <color:#00E262>/kit create {kit_name}</color> <color:#A0A0A0>to create it.</color>");
                 send_feedback_error(&sender, &server, service.messages.component_raw(&raw));
                 return Ok(0);
             }
@@ -1448,13 +1448,13 @@ impl CommandHandler for KitListHandler {
         match service.storage.list_kits() {
             Ok(kits) if !kits.is_empty() => {
                 let header = format!(
-                    "<color:#E2B700><bold>Available Kits ({}):</bold></color>",
+                    "<color:#E2B700>Available Kits ({})</color> <color:#555555>»</color>",
                     kits.len()
                 );
                 send_feedback(&sender, &server, service.messages.component_raw(&header));
                 for kit in kits {
                     let line = format!(
-                        "<color:#A0A0A0>• </color>{} <color:#555555>(icon: {})</color>",
+                        "<color:#555555>•</color> {} <color:#555555>(icon: {})</color>",
                         kit.name, kit.display_item
                     );
                     send_feedback(&sender, &server, service.messages.component_raw(&line));
