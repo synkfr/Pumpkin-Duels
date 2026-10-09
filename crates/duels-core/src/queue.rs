@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QueueEntry {
     pub player_uuid: String,
     pub player_name: String,
@@ -20,6 +20,13 @@ pub struct DuelChallenge {
     pub expires_at: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EnqueueResult {
+    AlreadyInQueue,
+    Enqueued,
+    Matched(QueueEntry, QueueEntry),
+}
+
 #[derive(Default)]
 pub struct Matchmaker {
     queues: Vec<QueueEntry>,
@@ -31,20 +38,48 @@ impl Matchmaker {
         Self::default()
     }
 
-    pub fn enqueue(&mut self, entry: QueueEntry) -> Option<(QueueEntry, QueueEntry)> {
-        self.dequeue(&entry.player_uuid);
+    pub fn enqueue(&mut self, entry: QueueEntry) -> EnqueueResult {
+        if self.is_queued_for_kit(&entry.player_uuid, &entry.kit_name, entry.ranked) {
+            return EnqueueResult::AlreadyInQueue;
+        }
 
         if let Some(pos) = self
             .queues
             .iter()
-            .position(|q| q.kit_name == entry.kit_name && q.ranked == entry.ranked)
+            .position(|q| q.kit_name == entry.kit_name && q.ranked == entry.ranked && q.player_uuid != entry.player_uuid)
         {
             let matched_opponent = self.queues.remove(pos);
-            Some((matched_opponent, entry))
+            self.dequeue(&matched_opponent.player_uuid);
+            self.dequeue(&entry.player_uuid);
+            EnqueueResult::Matched(matched_opponent, entry)
         } else {
             self.queues.push(entry);
-            None
+            EnqueueResult::Enqueued
         }
+    }
+
+    pub fn is_queued_for_kit(&self, player_uuid: &str, kit_name: &str, ranked: bool) -> bool {
+        self.queues
+            .iter()
+            .any(|q| q.player_uuid == player_uuid && q.kit_name == kit_name && q.ranked == ranked)
+    }
+
+    pub fn get_player_queues(&self, player_uuid: &str) -> Vec<QueueEntry> {
+        self.queues
+            .iter()
+            .filter(|q| q.player_uuid == player_uuid)
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_all_player_queues(&self) -> HashMap<String, Vec<QueueEntry>> {
+        let mut map: HashMap<String, Vec<QueueEntry>> = HashMap::new();
+        for q in &self.queues {
+            map.entry(q.player_uuid.clone())
+                .or_default()
+                .push(q.clone());
+        }
+        map
     }
 
     pub fn dequeue(&mut self, player_uuid: &str) -> bool {
@@ -169,16 +204,48 @@ mod tests {
             enqueued_at: 105,
         };
 
-        assert!(mm.enqueue(entry1).is_none());
+        assert_eq!(mm.enqueue(entry1), EnqueueResult::Enqueued);
         assert!(mm.is_queued("u1"));
 
         let match_result = mm.enqueue(entry2);
-        assert!(match_result.is_some());
-        let (p1, p2) = match_result.unwrap();
-        assert_eq!(p1.player_uuid, "u1");
-        assert_eq!(p2.player_uuid, "u2");
+        match match_result {
+            EnqueueResult::Matched(p1, p2) => {
+                assert_eq!(p1.player_uuid, "u1");
+                assert_eq!(p2.player_uuid, "u2");
+            }
+            _ => panic!("Expected match"),
+        }
         assert!(!mm.is_queued("u1"));
         assert!(!mm.is_queued("u2"));
+    }
+
+    #[test]
+    fn test_multi_queue_and_duplicate() {
+        let mut mm = Matchmaker::new();
+        let entry1 = QueueEntry {
+            player_uuid: "u1".into(),
+            player_name: "p1".into(),
+            kit_name: "classic".into(),
+            ranked: false,
+            enqueued_at: 100,
+        };
+        let entry1_dup = entry1.clone();
+        let entry2 = QueueEntry {
+            player_uuid: "u1".into(),
+            player_name: "p1".into(),
+            kit_name: "nodebuff".into(),
+            ranked: false,
+            enqueued_at: 110,
+        };
+
+        assert_eq!(mm.enqueue(entry1), EnqueueResult::Enqueued);
+        assert_eq!(mm.enqueue(entry1_dup), EnqueueResult::AlreadyInQueue);
+        assert_eq!(mm.enqueue(entry2), EnqueueResult::Enqueued);
+
+        let queues = mm.get_player_queues("u1");
+        assert_eq!(queues.len(), 2);
+        assert_eq!(queues[0].kit_name, "classic");
+        assert_eq!(queues[1].kit_name, "nodebuff");
     }
 
     #[test]

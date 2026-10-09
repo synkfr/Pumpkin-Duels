@@ -101,6 +101,9 @@ target_already_in_match = "<color:#E2B700>{target}</color> <color:#E20000>is cur
 queue_joined = "<color:#A0A0A0>Searching for opponent</color> <color:#555555>•</color> <color:#A0A0A0>Queue:</color> <color:#E2B700>{kit}</color>"
 queue_left = "<color:#A0A0A0>Left the matchmaking queue.</color>"
 queue_already = "<color:#E20000>You are already in a matchmaking queue.</color>"
+queue_already_kit = "<color:#E20000>You're already in queue on that kit.</color>"
+queue_action_bar = "<color:#A0A0A0>InQueue: </color><color:#00E262>{kit}</color> <color:#555555>({time})</color>"
+queue_action_bar_multi = "<color:#A0A0A0>InQueue: </color><color:#00E262>{kit}</color><color:#A0A0A0>, </color><color:#E2B700>+{more} more</color> <color:#555555>({time})</color>"
 queue_not_in = "<color:#E20000>You are not currently in a queue.</color>"
 match_countdown = "<color:#A0A0A0>Starting in</color> <color:#00E262>{seconds}s</color><color:#A0A0A0>...</color>"
 match_start = "<color:#00E262>FIGHT!</color>"
@@ -166,3 +169,5 @@ Messages dynamically substitute variables at runtime:
 - `{arena}`: Identifier of the duel arena.
 - `{seconds}`: Remaining countdown ticks or seconds.
 - `{player}`: Targeted player name in queries.
+- `{time}`: Elapsed queue time formatted as `HH:MM:SS` (e.g. `00:00:15`).
+- `{more}`: Number of additional queued kits when multi-queuing (e.g. `1`, `2`).

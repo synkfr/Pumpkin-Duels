@@ -47,7 +47,7 @@ Quick command to enter the matchmaking queue.
 | Syntax | Description |
 | :--- | :--- |
 | `/queue` | Opens the Kit Selector GUI to select a kit queue. |
-| `/queue <kit>` | Joins the queue for the specified kit directly. |
+| `/queue <kit>` | Joins the queue for the specified kit directly. Supports queuing across multiple kits simultaneously with live action bar timer feedback (`InQueue: [kit] (HH:MM:SS)` or `InQueue: [kit], +1 more (HH:MM:SS)`). Re-running the command on a kit you are already queued for alerts that you are already in queue. |
 
 ---
 

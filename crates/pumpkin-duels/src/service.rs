@@ -4,7 +4,7 @@ use duels_config::ConfigManager;
 use duels_core::arena::{ArenaInstanceManager, ArenaLocation, ArenaTemplate};
 use duels_core::kit::Kit;
 use duels_core::match_state::{MatchPhase, MatchSession};
-use duels_core::queue::{DuelChallenge, Matchmaker, QueueEntry};
+use duels_core::queue::{DuelChallenge, EnqueueResult, Matchmaker, QueueEntry};
 use duels_gui::{Button, GuiBuilder, GuiSessionRegistry, ItemDescriptor};
 use duels_storage::SqliteStorage;
 use pumpkin_plugin_api::common::Position;
@@ -12,6 +12,7 @@ use pumpkin_plugin_api::player::Player;
 use pumpkin_plugin_api::{Screen, Server};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub fn play_ui_click(_player: &Player) {}
@@ -41,6 +42,7 @@ pub struct DuelsService {
     pub arena_manager: Arc<ArenaInstanceManager>,
     pub active_matches: Arc<Mutex<HashMap<String, MatchSession>>>,
     pub player_match_map: Arc<Mutex<HashMap<String, String>>>,
+    queue_tick: AtomicU64,
 }
 
 impl DuelsService {
@@ -74,6 +76,7 @@ impl DuelsService {
             arena_manager: Arc::new(ArenaInstanceManager::new(worlds_dir)),
             active_matches: Arc::new(Mutex::new(HashMap::new())),
             player_match_map: Arc::new(Mutex::new(HashMap::new())),
+            queue_tick: AtomicU64::new(0),
         };
 
         service.init_defaults()?;
@@ -337,24 +340,39 @@ impl DuelsService {
 
         let matched = self.matchmaker.lock().unwrap().enqueue(entry);
 
-        if let Some((p1_entry, p2_entry)) = matched {
-            let p1 = server.get_player_by_name(&p1_entry.player_name);
-            let p2 = server.get_player_by_name(&p2_entry.player_name);
-
-            if let (Some(p1), Some(p2)) = (p1, p2) {
-                let kit_rec = self
-                    .find_kit(&p1_entry.kit_name)?
-                    .ok_or_else(|| self.messages.get_config().kit_not_found)?;
-                let kit = Kit::from_record(kit_rec)?;
-                self.start_match(&p1, &p2, kit, server)?;
+        match matched {
+            EnqueueResult::AlreadyInQueue => {
+                let msg = self.messages.get_config().queue_already_kit;
+                player.send_system_message(
+                    self.messages.component(&msg, &[("{kit}", kit_name), ("[kit]", kit_name)]),
+                    false,
+                );
+                play_sound_error(player);
             }
-        } else {
-            let msg = self.messages.get_config().queue_joined;
-            player.send_system_message(
-                self.messages.component(&msg, &[("{kit}", kit_name)]),
-                false,
-            );
-            play_ui_click(player);
+            EnqueueResult::Matched(p1_entry, p2_entry) => {
+                let p1 = server.get_player_by_name(&p1_entry.player_name);
+                let p2 = server.get_player_by_name(&p2_entry.player_name);
+
+                if let (Some(p1), Some(p2)) = (p1, p2) {
+                    p1.send_system_message(pumpkin_plugin_api::text::TextComponent::text(""), true);
+                    p2.send_system_message(pumpkin_plugin_api::text::TextComponent::text(""), true);
+
+                    let kit_rec = self
+                        .find_kit(&p1_entry.kit_name)?
+                        .ok_or_else(|| self.messages.get_config().kit_not_found)?;
+                    let kit = Kit::from_record(kit_rec)?;
+                    self.start_match(&p1, &p2, kit, server)?;
+                }
+            }
+            EnqueueResult::Enqueued => {
+                let msg = self.messages.get_config().queue_joined;
+                player.send_system_message(
+                    self.messages.component(&msg, &[("{kit}", kit_name), ("[kit]", kit_name)]),
+                    false,
+                );
+                play_ui_click(player);
+                self.send_player_queue_action_bar(player);
+            }
         }
 
         Ok(())
@@ -364,6 +382,7 @@ impl DuelsService {
         let p_uuid = player.get_id().to_string();
         let was_queued = self.matchmaker.lock().unwrap().dequeue(&p_uuid);
         if was_queued {
+            player.send_system_message(pumpkin_plugin_api::text::TextComponent::text(""), true);
             let msg = self.messages.get_config().queue_left;
             player.send_system_message(self.messages.component(&msg, &[]), false);
             play_ui_click(player);
@@ -381,6 +400,11 @@ impl DuelsService {
         kit: Kit,
         server: &Server,
     ) -> Result<(), String> {
+        self.matchmaker.lock().unwrap().dequeue(&p1.get_id().to_string());
+        self.matchmaker.lock().unwrap().dequeue(&p2.get_id().to_string());
+        p1.send_system_message(pumpkin_plugin_api::text::TextComponent::text(""), true);
+        p2.send_system_message(pumpkin_plugin_api::text::TextComponent::text(""), true);
+
         let active_arenas: std::collections::HashSet<String> = {
             let matches = self.active_matches.lock().unwrap();
             matches.values().map(|s| s.arena.template_name.clone()).collect()
@@ -457,7 +481,102 @@ impl DuelsService {
         Ok(())
     }
 
+    fn format_queue_action_bar(
+        &self,
+        entries: &[QueueEntry],
+        now: u64,
+    ) -> Option<pumpkin_plugin_api::text::TextComponent> {
+        if entries.is_empty() {
+            return None;
+        }
+
+        let min_enqueued = entries.iter().map(|e| e.enqueued_at).min().unwrap_or(now);
+        let elapsed = now.saturating_sub(min_enqueued);
+        let hours = elapsed / 3600;
+        let minutes = (elapsed % 3600) / 60;
+        let seconds = elapsed % 60;
+        let time_str = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+
+        let cfg = self.messages.get_config();
+        let primary_kit = &entries[0].kit_name;
+
+        let comp = if entries.len() == 1 {
+            let raw = self.messages.format_raw(
+                &cfg.queue_action_bar,
+                &[
+                    ("{kit}", primary_kit),
+                    ("[kit]", primary_kit),
+                    ("{time}", &time_str),
+                    ("(HH:MM:SS)", &time_str),
+                ],
+            );
+            self.messages.component_raw(&raw)
+        } else {
+            let more = (entries.len() - 1).to_string();
+            let raw = self.messages.format_raw(
+                &cfg.queue_action_bar_multi,
+                &[
+                    ("{kit}", primary_kit),
+                    ("[kit]", primary_kit),
+                    ("{more}", &more),
+                    ("{time}", &time_str),
+                    ("(HH:MM:SS)", &time_str),
+                ],
+            );
+            self.messages.component_raw(&raw)
+        };
+
+        Some(comp)
+    }
+
+    pub fn send_player_queue_action_bar(&self, player: &Player) {
+        let p_uuid = player.get_id().to_string();
+        let entries = {
+            let mm = self.matchmaker.lock().unwrap();
+            mm.get_player_queues(&p_uuid)
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if let Some(comp) = self.format_queue_action_bar(&entries, now) {
+            player.send_system_message(comp, true);
+        }
+    }
+
+    pub fn tick_queues(&self, server: &Server) {
+        let player_queues = {
+            let mm = self.matchmaker.lock().unwrap();
+            mm.get_all_player_queues()
+        };
+
+        if player_queues.is_empty() {
+            return;
+        }
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        for (_p_uuid, entries) in player_queues {
+            if entries.is_empty() {
+                continue;
+            }
+            if let Some(player) = server.get_player_by_name(&entries[0].player_name) {
+                if let Some(comp) = self.format_queue_action_bar(&entries, now) {
+                    player.send_system_message(comp, true);
+                }
+            }
+        }
+    }
+
     pub fn tick_matches(&self, server: &Server) {
+        if self.queue_tick.fetch_add(1, Ordering::Relaxed) % 20 == 0 {
+            self.tick_queues(server);
+        }
+
         let mut matches_to_end = Vec::new();
 
         {
