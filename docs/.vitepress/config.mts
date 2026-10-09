@@ -4,7 +4,7 @@ export default defineConfig({
   title: 'Pumpkin-Duels',
   description: 'Production-ready 1v1 practice duel plugin for the Pumpkin Minecraft server',
   lang: 'en-US',
-  base: '/',
+  base: process.env.VITEPRESS_BASE || '/Pumpkin-Duels/',
   cleanUrls: true,
   themeConfig: {
     siteTitle: 'Pumpkin-Duels',
