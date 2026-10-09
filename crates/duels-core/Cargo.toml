@@ -1,0 +1,15 @@
+[package]
+name = "duels-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+duels-storage.workspace = true
+duels-config.workspace = true
+pumpkin-plugin-api.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
