@@ -48,6 +48,13 @@ pub struct MessagesConfig {
     pub only_players: String,
     pub command_help: String,
     pub admin_help: String,
+    pub kit_renamed: String,
+    pub kit_edited: String,
+    pub not_in_match: String,
+    pub match_surrendered: String,
+    pub ping_self: String,
+    pub ping_other: String,
+    pub version_info: String,
 }
 
 impl Default for MessagesConfig {
@@ -93,8 +100,15 @@ impl Default for MessagesConfig {
             no_permission: "<color:#E20000>You do not have permission to execute this command.</color>".to_string(),
             cannot_break_arena: "<color:#E20000>You cannot modify blocks in the duel arena.</color>".to_string(),
             only_players: "<color:#E20000>This command can only be executed by a player in-game.</color>".to_string(),
-            command_help: "<color:#E2B700><bold>Commands:</bold></color> <color:#A0A0A0>/duel <player>, /duel queue, /duel leave, /duel stats, /duel top</color>".to_string(),
-            admin_help: "<color:#E2B700><bold>Admin Commands:</bold></color> <color:#A0A0A0>/duels admin arena <create|delete|setspawn1|setspawn2|list>, /duels admin kit <save|delete|list>, /duels admin setlobby, /duels admin reload</color>".to_string(),
+            command_help: "<color:#E2B700><bold>Commands:</bold></color> <color:#A0A0A0>/duel <accept|deny|invite> <player>, /queue [kit], /leavequeue, /surrender, /ping, /duel stats, /duel top</color>".to_string(),
+            admin_help: "<color:#E2B700><bold>Admin Commands:</bold></color> <color:#A0A0A0>/pd <version|reload|setlobby>, /arena <create|setspawn1|setspawn2|setspectator|setbounds|tp|leave|list|delete>, /kit <create|delete|edit|list|rename></color>".to_string(),
+            kit_renamed: "<color:#00E262>Kit <color:#E2B700>{old_name}</color> renamed to {new_name}!</color>".to_string(),
+            kit_edited: "<color:#00E262>Kit <color:#E2B700>{name}</color> updated with current inventory!</color>".to_string(),
+            not_in_match: "<color:#E20000>You are not currently in an active match.</color>".to_string(),
+            match_surrendered: "<color:#E2B700>{player}</color> <color:#E20000>surrendered the match!</color>".to_string(),
+            ping_self: "<color:#A0A0A0>Your ping:</color> <color:#00E262>{ping}ms</color>".to_string(),
+            ping_other: "<color:#E2B700>{player}'s</color> <color:#A0A0A0>ping:</color> <color:#00E262>{ping}ms</color>".to_string(),
+            version_info: "<color:#E2B700>Pumpkin-Duels</color> <color:#00E262>v0.1.0</color> <color:#A0A0A0>built for Pumpkin 0.2.0 (Protocol 777)</color>".to_string(),
         }
     }
 }

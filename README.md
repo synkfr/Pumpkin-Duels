@@ -48,8 +48,9 @@ Documentation topics:
 ### 1. Set Lobby Location
 Stand at your desired duel lobby spawn and run:
 ```
-/dueladmin setlobby
+/pumpkin-duels setlobby
 ```
+(Alias: `/pd setlobby`)
 
 ### 2. Create an Arena
 1. Create a void world template with a starter platform:
@@ -79,21 +80,36 @@ Stand at your desired duel lobby spawn and run:
 1. Arrange items, armor, and offhand in your player inventory.
 2. Save the kit:
    ```
-   /dueladmin kit save nodebuff
+   /kit create nodebuff
+   ```
+3. (Optional) Customize display name with MiniMessage formatting:
+   ```
+   /kit rename nodebuff <color:#FFA500><bold>No Debuff</bold></color>
    ```
 
 ## Commands Summary
 
 ### Player Commands
 - `/duel <player>`: Send a duel challenge with kit selection GUI.
+- `/duel invite <player> [kit]`: Directly challenge a player.
 - `/duel accept [player]`: Accept an incoming duel challenge.
-- `/duel decline [player]`: Decline an incoming duel challenge.
-- `/queue [kit]`: Enter the matchmaking queue.
-- `/leavequeue`: Leave the matchmaking queue.
+- `/duel deny [player]`: Deny or decline an incoming duel challenge.
+- `/queue [kit]`: Enter the matchmaking queue (aliases: `/q`, `/joinqueue`).
+- `/leavequeue`: Leave the matchmaking queue (aliases: `/lq`, `/leave`, `/unqueue`).
+- `/surrender`: Forfeit an ongoing match (aliases: `/ff`, `/forfeit`).
+- `/ping [player]`: Check current latency in ms (alias: `/ms`).
 - `/duel stats [player]`: View duel statistics and ELO rating.
 - `/duel top`: View top players on the leaderboard.
 
 ### Administrator Commands
+- `/pumpkin-duels version`: Display plugin version (aliases: `/pd`, `/pumpkinduels`, `/dueladmin`).
+- `/pumpkin-duels reload`: Hot-reload configuration and message files.
+- `/pumpkin-duels setlobby`: Set the global duel lobby spawn.
+- `/kit create <name>`: Save current inventory as a new kit.
+- `/kit edit <name>`: Update existing kit items from your inventory.
+- `/kit delete <name>`: Permanently delete a kit.
+- `/kit list`: List registered kits.
+- `/kit rename <name> <display>`: Rename kit with MiniMessage support.
 - `/arena create <name> [dimension]`: Create a void arena template.
 - `/arena setspawn1 <name>`: Set player 1 spawn point.
 - `/arena setspawn2 <name>`: Set player 2 spawn point.
@@ -103,11 +119,6 @@ Stand at your desired duel lobby spawn and run:
 - `/arena leave`: Teleport back to lobby.
 - `/arena list`: List configured arenas.
 - `/arena delete <name>`: Remove an arena template.
-- `/dueladmin kit save <name>`: Save current inventory as a kit.
-- `/dueladmin kit list`: List registered kits.
-- `/dueladmin kit delete <name>`: Delete a kit.
-- `/dueladmin setlobby`: Set the global duel lobby spawn.
-- `/dueladmin reload`: Hot-reload configuration files.
 
 ## Building from Source
 

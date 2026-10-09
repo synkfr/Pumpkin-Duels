@@ -12,7 +12,7 @@ Kits define the equipment, armor, inventory contents, and gameplay rules applied
 
 ## Creating a Kit
 
-Follow these steps to create a new duel kit:
+Follow these steps to create and configure a new duel kit:
 
 ### 1. Equip Items In-Game
 
@@ -24,20 +24,38 @@ Join the server as an administrator and arrange your inventory:
 
 ### 2. Save the Kit
 
-Run the kit save command:
+Run the kit create command:
 
 ```
-/dueladmin kit save nodebuff
+/kit create nodebuff
 ```
 
 The plugin captures your current loadout and persists it to the database under the identifier `nodebuff`.
 
-### 3. Verify Registered Kits
+### 3. Customize Display Name with MiniMessage
 
-List all registered kits:
+You can rename kits with rich colors, gradients, and formatting using MiniMessage:
 
 ```
-/dueladmin kit list
+/kit rename nodebuff <color:#FFA500><bold>No Debuff</bold></color>
+```
+
+The formatted name is automatically translated into Minecraft color codes for GUI title and lore displays.
+
+### 4. Updating or Editing an Existing Kit
+
+To update the items in an existing kit, adjust your inventory and run:
+
+```
+/kit edit nodebuff
+```
+
+### 5. Verify Registered Kits
+
+List all registered kits and their active display names:
+
+```
+/kit list
 ```
 
 ---

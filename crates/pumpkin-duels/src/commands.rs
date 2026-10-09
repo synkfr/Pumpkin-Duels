@@ -49,6 +49,32 @@ fn check_admin_permission(sender: &CommandSender, server: &Server) -> bool {
         || sender.has_permission(server, PERM_ADMIN)
 }
 
+fn capture_player_kit(player: &pumpkin_plugin_api::player::Player, name: String) -> Kit {
+    let mut kit = Kit::classic();
+    kit.name = name;
+
+    let player_inv = player.get_inventory();
+    let inv = player_inv.as_inventory();
+
+    kit.items.clear();
+    for slot in 0..36 {
+        if let Some(item) = inv.get_item(slot) {
+            kit.items.push(duels_core::kit::KitItem {
+                slot,
+                id: item.get_registry_key(),
+                count: item.get_count(),
+            });
+        }
+    }
+
+    kit.helmet = player_inv.get_helmet().map(|i| i.get_registry_key());
+    kit.chestplate = player_inv.get_chestplate().map(|i| i.get_registry_key());
+    kit.leggings = player_inv.get_leggings().map(|i| i.get_registry_key());
+    kit.boots = player_inv.get_boots().map(|i| i.get_registry_key());
+    kit.offhand = player_inv.get_off_hand().map(|i| i.get_registry_key());
+    kit
+}
+
 struct DuelHelpHandler;
 impl CommandHandler for DuelHelpHandler {
     fn handle(
@@ -60,6 +86,20 @@ impl CommandHandler for DuelHelpHandler {
         let service = get_service();
         let msg = service.messages.get_config().command_help;
         send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+        Ok(0)
+    }
+}
+
+struct DuelInviteUsageHandler;
+impl CommandHandler for DuelInviteUsageHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let raw = "<color:#E20000>Usage: /duel invite <player> [kit]</color>";
+        send_feedback_error(&sender, &server, get_service().messages.component_raw(raw));
         Ok(0)
     }
 }
@@ -82,14 +122,14 @@ impl CommandHandler for DuelRootHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
 
         if player.get_name() == player_name {
             let msg = service.messages.get_config().duel_cannot_self;
-            player.send_system_message(service.messages.component(&msg, &[]), false);
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -97,10 +137,78 @@ impl CommandHandler for DuelRootHandler {
             let _ = service.open_kit_selector(&player, Some(target.get_name()));
         } else {
             let msg = service.messages.get_config().player_not_found;
-            player.send_system_message(
+            send_feedback_error(
+                &sender,
+                &server,
                 service.messages.component(&msg, &[("{player}", &player_name)]),
-                false,
             );
+        }
+
+        Ok(0)
+    }
+}
+
+struct DuelInviteKitHandler;
+impl CommandHandler for DuelInviteKitHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let player_name = match args.get_value("player") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => return Ok(0),
+        };
+        let kit_query = match args.get_value("kit") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => return Ok(0),
+        };
+
+        let service = get_service();
+        let player = match server.get_player_by_name(&sender.get_name()) {
+            Some(p) => p,
+            None => {
+                let msg = service.messages.get_config().only_players;
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+                return Ok(0);
+            }
+        };
+
+        if player.get_name() == player_name {
+            let msg = service.messages.get_config().duel_cannot_self;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+
+        let target = match server.get_player_by_name(&player_name) {
+            Some(t) => t,
+            None => {
+                let msg = service.messages.get_config().player_not_found;
+                send_feedback_error(
+                    &sender,
+                    &server,
+                    service.messages.component(&msg, &[("{player}", &player_name)]),
+                );
+                return Ok(0);
+            }
+        };
+
+        let kit = match service.find_kit(&kit_query) {
+            Ok(Some(k)) => k,
+            _ => {
+                let msg = service.messages.get_config().kit_not_found;
+                send_feedback_error(
+                    &sender,
+                    &server,
+                    service.messages.component(&msg, &[("{name}", &kit_query)]),
+                );
+                return Ok(0);
+            }
+        };
+
+        if let Err(err_msg) = service.send_challenge(&player, &target, &kit.name) {
+            player.send_system_message(service.messages.component_raw(&err_msg), false);
         }
 
         Ok(0)
@@ -132,7 +240,6 @@ impl CommandHandler for DuelAcceptHandler {
 
         if let Err(err_msg) = service.accept_challenge(&player, player_name.as_deref(), &server) {
             player.send_system_message(service.messages.component_raw(&err_msg), false);
-            crate::service::play_sound_error(&player);
         }
 
         Ok(0)
@@ -164,7 +271,6 @@ impl CommandHandler for DuelDeclineHandler {
 
         if let Err(err_msg) = service.decline_challenge(&player, player_name.as_deref(), &server) {
             player.send_system_message(service.messages.component_raw(&err_msg), false);
-            crate::service::play_sound_error(&player);
         }
 
         Ok(0)
@@ -184,7 +290,7 @@ impl CommandHandler for DuelQueueHandler {
             let _ = service.open_kit_selector(&player, None);
         } else {
             let msg = service.messages.get_config().only_players;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
         }
         Ok(0)
     }
@@ -208,20 +314,21 @@ impl CommandHandler for DuelQueueKitHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
 
-        match service.storage.get_kit(&kit_name) {
-            Ok(Some(_)) => {
-                let _ = service.enqueue(&player, &kit_name, false, &server);
+        match service.find_kit(&kit_name) {
+            Ok(Some(k)) => {
+                let _ = service.enqueue(&player, &k.name, false, &server);
             }
             _ => {
                 let msg = service.messages.get_config().kit_not_found;
-                player.send_system_message(
+                send_feedback_error(
+                    &sender,
+                    &server,
                     service.messages.component(&msg, &[("{name}", &kit_name)]),
-                    false,
                 );
             }
         }
@@ -240,16 +347,6 @@ impl CommandHandler for DuelLeaveHandler {
     ) -> Result<i32, CommandError> {
         let service = get_service();
         if let Some(player) = server.get_player_by_name(&sender.get_name()) {
-            let p_uuid = player.get_id().to_string();
-            if let Some(session) = service.get_match_by_player(&p_uuid) {
-                let winner_uuid = if session.player1_uuid == p_uuid {
-                    session.player2_uuid
-                } else {
-                    session.player1_uuid
-                };
-                service.end_match(&session.id, &winner_uuid, &server);
-                return Ok(0);
-            }
             service.leave_queue(&player);
         } else {
             let msg = service.messages.get_config().only_players;
@@ -273,20 +370,35 @@ impl CommandHandler for DuelStatsHandler {
         };
 
         let service = get_service();
-        let target_player = server.get_player_by_name(&target_name);
-
-        let (uuid, name) = if let Some(p) = target_player {
-            (p.get_id().to_string(), p.get_name())
+        let target_uuid = if let Some(target) = server.get_player_by_name(&target_name) {
+            target.get_id().to_string()
         } else {
-            (target_name.clone(), target_name.clone())
+            match service.storage.get_stats_by_name(&target_name) {
+                Ok(Some(st)) => st.uuid,
+                _ => {
+                    let msg = service.messages.get_config().player_not_found;
+                    send_feedback_error(
+                        &sender,
+                        &server,
+                        service.messages.component(&msg, &[("{player}", &target_name)]),
+                    );
+                    return Ok(0);
+                }
+            }
         };
 
-        if let Ok(stats) = service.storage.get_or_create_stats(&uuid, &name) {
-            let msg = format!(
-                "<color:#E2B700>Duel Stats: <color:#FFFFFF>{}</color></color>\n<color:#A0A0A0>Wins:</color> <color:#00E262>{}</color>\n<color:#A0A0A0>Losses:</color> <color:#E20000>{}</color>\n<color:#A0A0A0>Current Streak:</color> <color:#E2B700>{}</color>\n<color:#A0A0A0>Best Streak:</color> <color:#E2B700>{}</color>\n<color:#A0A0A0>Elo:</color> <color:#00E262>{}</color>",
-                stats.name, stats.wins, stats.losses, stats.current_streak, stats.best_streak, stats.elo
+        if let Ok(stats) = service.storage.get_or_create_stats(&target_uuid, &target_name) {
+            let winrate = if stats.wins + stats.losses > 0 {
+                (stats.wins as f64 / (stats.wins + stats.losses) as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            let raw_msg = format!(
+                "<color:#E2B700><bold>Stats for {}:</bold></color>\n<color:#A0A0A0>ELO:</color> <color:#00E262>{}</color>\n<color:#A0A0A0>Wins:</color> <color:#00E262>{}</color> <color:#555555>|</color> <color:#A0A0A0>Losses:</color> <color:#E20000>{}</color>\n<color:#A0A0A0>Win Rate:</color> <color:#E2B700>{:.1}%</color>\n<color:#A0A0A0>Streak:</color> <color:#00E262>{}</color> <color:#555555>(Best: {})</color>",
+                stats.name, stats.elo, stats.wins, stats.losses, winrate, stats.current_streak, stats.best_streak
             );
-            send_feedback(&sender, &server, service.messages.component_raw(&msg));
+            send_feedback(&sender, &server, service.messages.component_raw(&raw_msg));
         }
 
         Ok(0)
@@ -302,26 +414,109 @@ impl CommandHandler for DuelTopHandler {
         _args: ConsumedArgs,
     ) -> Result<i32, CommandError> {
         let service = get_service();
-        if let Ok(top_players) = service.storage.get_top_players(10) {
-            let mut msg = "<color:#E2B700>Top Players (Elo):</color>\n".to_string();
-            for (idx, p) in top_players.iter().enumerate() {
-                msg.push_str(&format!(
-                    "<color:#A0A0A0>#{}. <color:#FFFFFF>{}</color> - <color:#00E262>{}</color> Elo (<color:#00E262>{}W</color>/<color:#E20000>{}L</color>)</color>\n",
-                    idx + 1,
-                    p.name,
-                    p.elo,
-                    p.wins,
-                    p.losses
-                ));
+        match service.storage.get_top_players(10) {
+            Ok(top) if !top.is_empty() => {
+                let mut msg = "<color:#E2B700><bold>Top 10 Duels Leaderboard:</bold></color>\n".to_string();
+                for (rank, p) in top.iter().enumerate() {
+                    msg.push_str(&format!(
+                        "<color:#555555>{}.</color> <color:#00E262>{}</color> <color:#555555>-</color> <color:#E2B700>{} ELO</color> <color:#555555>({}W/{}L)</color>\n",
+                        rank + 1, p.name, p.elo, p.wins, p.losses
+                    ));
+                }
+                send_feedback(&sender, &server, service.messages.component_raw(&msg));
             }
-            send_feedback(&sender, &server, service.messages.component_raw(&msg));
+            _ => {
+                send_feedback(
+                    &sender,
+                    &server,
+                    service.messages.component_raw("<color:#E2B700>No ranked stats recorded yet.</color>"),
+                );
+            }
         }
         Ok(0)
     }
 }
 
-struct AdminHelpHandler;
-impl CommandHandler for AdminHelpHandler {
+struct SurrenderHandler;
+impl CommandHandler for SurrenderHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        let player = match server.get_player_by_name(&sender.get_name()) {
+            Some(p) => p,
+            None => {
+                let msg = service.messages.get_config().only_players;
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+                return Ok(0);
+            }
+        };
+
+        if let Err(err_msg) = service.surrender_match(&player, &server) {
+            send_feedback_error(&sender, &server, service.messages.component_raw(&err_msg));
+        }
+        Ok(0)
+    }
+}
+
+struct PingHandler;
+impl CommandHandler for PingHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        let target_name = match args.get_value("player") {
+            Arg::Simple(s) | Arg::Msg(s) => Some(s),
+            _ => None,
+        };
+
+        if let Some(target_name) = target_name {
+            if let Some(target) = server.get_player_by_name(&target_name) {
+                let ping = target.get_ping().to_string();
+                let msg = service.messages.get_config().ping_other;
+                send_feedback(
+                    &sender,
+                    &server,
+                    service.messages.component(
+                        &msg,
+                        &[("{player}", &target.get_name()), ("{ping}", &ping)],
+                    ),
+                );
+            } else {
+                let msg = service.messages.get_config().player_not_found;
+                send_feedback_error(
+                    &sender,
+                    &server,
+                    service.messages.component(&msg, &[("{player}", &target_name)]),
+                );
+            }
+        } else if let Some(player) = server.get_player_by_name(&sender.get_name()) {
+            let ping = player.get_ping().to_string();
+            let msg = service.messages.get_config().ping_self;
+            send_feedback(
+                &sender,
+                &server,
+                service.messages.component(&msg, &[("{ping}", &ping)]),
+            );
+        } else {
+            send_feedback(
+                &sender,
+                &server,
+                service.messages.component_raw("<color:#A0A0A0>Console ping: <color:#00E262>0ms</color></color>"),
+            );
+        }
+        Ok(0)
+    }
+}
+
+struct PdHelpHandler;
+impl CommandHandler for PdHelpHandler {
     fn handle(
         &self,
         sender: CommandSender,
@@ -331,11 +526,114 @@ impl CommandHandler for AdminHelpHandler {
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
         let msg = service.messages.get_config().admin_help;
         send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+        Ok(0)
+    }
+}
+
+struct PdVersionHandler;
+impl CommandHandler for PdVersionHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        let msg = service.messages.get_config().version_info;
+        send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+        Ok(0)
+    }
+}
+
+struct PdReloadHandler;
+impl CommandHandler for PdReloadHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+        let _ = service.config.reload();
+        let _ = service.messages.reload();
+        let msg = service.messages.get_config().reload_success;
+        send_feedback_success(&sender, &server, service.messages.component(&msg, &[]));
+        Ok(0)
+    }
+}
+
+struct PdSetLobbyHandler;
+impl CommandHandler for PdSetLobbyHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+
+        if let Some(player) = server.get_player_by_name(&sender.get_name()) {
+            let pos = player.get_position();
+            let world_name = player.get_world().get_name();
+            let yaw = player.get_yaw();
+            let pitch = player.get_pitch();
+            let _ = service.config.update(|cfg| {
+                cfg.lobby_world = world_name;
+                cfg.lobby_x = pos.0;
+                cfg.lobby_y = pos.1;
+                cfg.lobby_z = pos.2;
+                cfg.lobby_yaw = yaw;
+                cfg.lobby_pitch = pitch;
+            });
+            let msg = service.messages.get_config().lobby_set;
+            send_feedback_success(&sender, &server, service.messages.component(&msg, &[]));
+        } else {
+            let msg = service.messages.get_config().only_players;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+        }
+        Ok(0)
+    }
+}
+
+struct AdminArenaHelpHandler;
+impl CommandHandler for AdminArenaHelpHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+        let raw = "<color:#E2B700><bold>Arena Commands:</bold></color>\n<color:#00E262>/arena create <name> [dimension]</color> <color:#A0A0A0>- Create a void arena template</color>\n<color:#00E262>/arena setspawn1 <name></color> <color:#A0A0A0>- Set player 1 spawn at your location</color>\n<color:#00E262>/arena setspawn2 <name></color> <color:#A0A0A0>- Set player 2 spawn at your location</color>\n<color:#00E262>/arena setspectator <name></color> <color:#A0A0A0>- Set spectator spawn at your location</color>\n<color:#00E262>/arena setbounds <name> [radius]</color> <color:#A0A0A0>- Set bounding radius</color>\n<color:#00E262>/arena tp <name></color> <color:#A0A0A0>- Teleport to arena template world</color>\n<color:#00E262>/arena leave</color> <color:#A0A0A0>- Return to lobby</color>\n<color:#00E262>/arena list</color> <color:#A0A0A0>- List all arenas</color>\n<color:#00E262>/arena delete <name></color> <color:#A0A0A0>- Delete arena</color>";
+        send_feedback(&sender, &server, service.messages.component_raw(raw));
+        Ok(0)
+    }
+}
+
+struct AdminArenaCreateUsageHandler;
+impl CommandHandler for AdminArenaCreateUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena create <name> [dimension]</color>"));
         Ok(0)
     }
 }
@@ -350,7 +648,10 @@ impl CommandHandler for AdminArenaCreateHandler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena create <name> [dimension]</color>"));
+                return Ok(0);
+            }
         };
 
         let dimension = match args.get_value("dimension") {
@@ -365,7 +666,7 @@ impl CommandHandler for AdminArenaCreateHandler {
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -373,14 +674,14 @@ impl CommandHandler for AdminArenaCreateHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
 
         if let Ok(Some(_)) = service.storage.get_arena(&arena_name) {
             let msg = service.messages.get_config().arena_already_exists;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
@@ -433,8 +734,16 @@ impl CommandHandler for AdminArenaCreateHandler {
         let raw_msg = format!(
             "<color:#00E262>Void arena <color:#E2B700>{arena_name}</color> created! World: <color:#E2B700>{world_name}</color>. Build your arena, then run <color:#00E262>/arena setspawn1 {arena_name}</color> and <color:#00E262>/arena setspawn2 {arena_name}</color>.</color>"
         );
-        player.send_system_message(service.messages.component_raw(&raw_msg), false);
+        send_feedback_success(&sender, &server, service.messages.component_raw(&raw_msg));
 
+        Ok(0)
+    }
+}
+
+struct AdminArenaSetSpawn1UsageHandler;
+impl CommandHandler for AdminArenaSetSpawn1UsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setspawn1 <name></color>"));
         Ok(0)
     }
 }
@@ -449,13 +758,16 @@ impl CommandHandler for AdminArenaSetSpawn1Handler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setspawn1 <name></color>"));
+                return Ok(0);
+            }
         };
 
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -463,7 +775,7 @@ impl CommandHandler for AdminArenaSetSpawn1Handler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
@@ -478,20 +790,28 @@ impl CommandHandler for AdminArenaSetSpawn1Handler {
             let _ = service.storage.save_arena(&arena);
 
             let msg = service.messages.get_config().arena_spawn1_set;
-            send_feedback(
+            send_feedback_success(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         } else {
             let msg = service.messages.get_config().arena_not_found;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         }
 
+        Ok(0)
+    }
+}
+
+struct AdminArenaSetSpawn2UsageHandler;
+impl CommandHandler for AdminArenaSetSpawn2UsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setspawn2 <name></color>"));
         Ok(0)
     }
 }
@@ -506,13 +826,16 @@ impl CommandHandler for AdminArenaSetSpawn2Handler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setspawn2 <name></color>"));
+                return Ok(0);
+            }
         };
 
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -520,7 +843,7 @@ impl CommandHandler for AdminArenaSetSpawn2Handler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
@@ -535,20 +858,28 @@ impl CommandHandler for AdminArenaSetSpawn2Handler {
             let _ = service.storage.save_arena(&arena);
 
             let msg = service.messages.get_config().arena_spawn2_set;
-            send_feedback(
+            send_feedback_success(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         } else {
             let msg = service.messages.get_config().arena_not_found;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         }
 
+        Ok(0)
+    }
+}
+
+struct AdminArenaSetSpectatorUsageHandler;
+impl CommandHandler for AdminArenaSetSpectatorUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setspectator <name></color>"));
         Ok(0)
     }
 }
@@ -563,13 +894,16 @@ impl CommandHandler for AdminArenaSetSpectatorHandler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setspectator <name></color>"));
+                return Ok(0);
+            }
         };
 
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -577,7 +911,7 @@ impl CommandHandler for AdminArenaSetSpectatorHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
@@ -592,20 +926,28 @@ impl CommandHandler for AdminArenaSetSpectatorHandler {
             let _ = service.storage.save_arena(&arena);
 
             let msg = service.messages.get_config().arena_spectator_set;
-            send_feedback(
+            send_feedback_success(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         } else {
             let msg = service.messages.get_config().arena_not_found;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         }
 
+        Ok(0)
+    }
+}
+
+struct AdminArenaSetBoundsUsageHandler;
+impl CommandHandler for AdminArenaSetBoundsUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setbounds <name> [radius]</color>"));
         Ok(0)
     }
 }
@@ -620,7 +962,10 @@ impl CommandHandler for AdminArenaSetBoundsHandler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena setbounds <name> [radius]</color>"));
+                return Ok(0);
+            }
         };
 
         let radius = match args.get_value("radius") {
@@ -631,7 +976,7 @@ impl CommandHandler for AdminArenaSetBoundsHandler {
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -639,7 +984,7 @@ impl CommandHandler for AdminArenaSetBoundsHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
@@ -656,20 +1001,28 @@ impl CommandHandler for AdminArenaSetBoundsHandler {
             let _ = service.storage.save_arena(&arena);
 
             let msg = service.messages.get_config().arena_bounds_set;
-            send_feedback(
+            send_feedback_success(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         } else {
             let msg = service.messages.get_config().arena_not_found;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
             );
         }
 
+        Ok(0)
+    }
+}
+
+struct AdminArenaTpUsageHandler;
+impl CommandHandler for AdminArenaTpUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena tp <name></color>"));
         Ok(0)
     }
 }
@@ -684,13 +1037,16 @@ impl CommandHandler for AdminArenaTpHandler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena tp <name></color>"));
+                return Ok(0);
+            }
         };
 
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -698,7 +1054,7 @@ impl CommandHandler for AdminArenaTpHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
@@ -721,10 +1077,10 @@ impl CommandHandler for AdminArenaTpHandler {
             );
 
             let raw_msg = format!("<color:#00E262>Teleported to arena <color:#E2B700>{arena_name}</color>.</color>");
-            player.send_system_message(service.messages.component_raw(&raw_msg), false);
+            send_feedback_success(&sender, &server, service.messages.component_raw(&raw_msg));
         } else {
             let msg = service.messages.get_config().arena_not_found;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
@@ -748,14 +1104,25 @@ impl CommandHandler for AdminArenaLeaveHandler {
             Some(p) => p,
             None => {
                 let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
                 return Ok(0);
             }
         };
 
         service.teleport_lobby(&player, &server);
-        let raw_msg = "<color:#00E262>Teleported to duel lobby.</color>";
-        player.send_system_message(service.messages.component_raw(raw_msg), false);
+        send_feedback_success(
+            &sender,
+            &server,
+            service.messages.component_raw("<color:#00E262>Returned to lobby.</color>"),
+        );
+        Ok(0)
+    }
+}
+
+struct AdminArenaDeleteUsageHandler;
+impl CommandHandler for AdminArenaDeleteUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena delete <name></color>"));
         Ok(0)
     }
 }
@@ -770,13 +1137,16 @@ impl CommandHandler for AdminArenaDeleteHandler {
     ) -> Result<i32, CommandError> {
         let arena_name = match args.get_value("name") {
             Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /arena delete <name></color>"));
+                return Ok(0);
+            }
         };
 
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
@@ -790,7 +1160,7 @@ impl CommandHandler for AdminArenaDeleteHandler {
             );
         } else {
             let msg = service.messages.get_config().arena_not_found;
-            send_feedback(
+            send_feedback_error(
                 &sender,
                 &server,
                 service.messages.component(&msg, &[("{name}", &arena_name)]),
@@ -812,13 +1182,13 @@ impl CommandHandler for AdminArenaListHandler {
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
         match service.storage.list_arenas() {
             Ok(arenas) if !arenas.is_empty() => {
-                let mut msg = "<color:#E2B700>Configured Arenas:</color>\n".to_string();
+                let mut msg = format!("<color:#E2B700><bold>Configured Arenas ({}):</bold></color>\n", arenas.len());
                 for a in arenas {
                     msg.push_str(&format!(
                         "<color:#00E262>•</color> <color:#A0A0A0>{}</color> <color:#707070>(world: {}, enabled: {})</color>\n",
@@ -836,115 +1206,8 @@ impl CommandHandler for AdminArenaListHandler {
     }
 }
 
-struct AdminKitSaveHandler;
-impl CommandHandler for AdminKitSaveHandler {
-    fn handle(
-        &self,
-        sender: CommandSender,
-        server: Server,
-        args: ConsumedArgs,
-    ) -> Result<i32, CommandError> {
-        let kit_name = match args.get_value("name") {
-            Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
-        };
-
-        let service = get_service();
-        if !check_admin_permission(&sender, &server) {
-            let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
-            return Ok(0);
-        }
-
-        let player = match server.get_player_by_name(&sender.get_name()) {
-            Some(p) => p,
-            None => {
-                let msg = service.messages.get_config().only_players;
-                send_feedback(&sender, &server, service.messages.component(&msg, &[]));
-                return Ok(0);
-            }
-        };
-
-        let mut kit = Kit::classic();
-        kit.name = kit_name.clone();
-
-        let player_inv = player.get_inventory();
-        let inv = player_inv.as_inventory();
-
-        kit.items.clear();
-        for slot in 0..36 {
-            if let Some(item) = inv.get_item(slot) {
-                kit.items.push(duels_core::kit::KitItem {
-                    slot,
-                    id: item.get_registry_key(),
-                    count: item.get_count(),
-                });
-            }
-        }
-
-        kit.helmet = player_inv.get_helmet().map(|i| i.get_registry_key());
-        kit.chestplate = player_inv.get_chestplate().map(|i| i.get_registry_key());
-        kit.leggings = player_inv.get_leggings().map(|i| i.get_registry_key());
-        kit.boots = player_inv.get_boots().map(|i| i.get_registry_key());
-        kit.offhand = player_inv.get_off_hand().map(|i| i.get_registry_key());
-
-        if let Ok(rec) = kit.to_record() {
-            let _ = service.storage.save_kit(&rec);
-            let msg = service.messages.get_config().kit_saved;
-            send_feedback(
-                &sender,
-                &server,
-                service.messages.component(&msg, &[("{name}", &kit_name)]),
-            );
-        }
-
-        Ok(0)
-    }
-}
-
-struct AdminKitDeleteHandler;
-impl CommandHandler for AdminKitDeleteHandler {
-    fn handle(
-        &self,
-        sender: CommandSender,
-        server: Server,
-        args: ConsumedArgs,
-    ) -> Result<i32, CommandError> {
-        let kit_name = match args.get_value("name") {
-            Arg::Simple(s) | Arg::Msg(s) => s,
-            _ => return Ok(0),
-        };
-
-        let service = get_service();
-        if !check_admin_permission(&sender, &server) {
-            let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
-            return Ok(0);
-        }
-
-        if let Ok(Some(_)) = service.storage.get_kit(&kit_name) {
-            let _ = service.storage.delete_kit(&kit_name);
-            let msg = service.messages.get_config().kit_deleted;
-            send_feedback(
-                &sender,
-                &server,
-                service.messages.component(&msg, &[("{name}", &kit_name)]),
-            );
-        } else {
-            let msg = service.messages.get_config().kit_not_found;
-            send_feedback(
-                &sender,
-                &server,
-                service.messages.component(&msg, &[("{name}", &kit_name)]),
-            );
-        }
-
-        Ok(0)
-    }
-}
-
-struct AdminKitListHandler;
-impl CommandHandler for AdminKitListHandler {
+struct KitHelpHandler;
+impl CommandHandler for KitHelpHandler {
     fn handle(
         &self,
         sender: CommandSender,
@@ -954,20 +1217,214 @@ impl CommandHandler for AdminKitListHandler {
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+        let raw = "<color:#E2B700><bold>Kit Commands:</bold></color>\n<color:#00E262>/kit create <name></color> <color:#A0A0A0>- Save inventory as new kit</color>\n<color:#00E262>/kit delete <name></color> <color:#A0A0A0>- Delete kit</color>\n<color:#00E262>/kit edit <name></color> <color:#A0A0A0>- Overwrite kit items with current inventory</color>\n<color:#00E262>/kit list</color> <color:#A0A0A0>- List all kits</color>\n<color:#00E262>/kit rename <name> <new_name></color> <color:#A0A0A0>- Rename kit (MiniMessage supported)</color>";
+        send_feedback(&sender, &server, service.messages.component_raw(raw));
+        Ok(0)
+    }
+}
+
+struct KitCreateUsageHandler;
+impl CommandHandler for KitCreateUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit create <name></color>"));
+        Ok(0)
+    }
+}
+
+struct KitCreateHandler;
+impl CommandHandler for KitCreateHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let kit_name = match args.get_value("name") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit create <name></color>"));
+                return Ok(0);
+            }
+        };
+
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+
+        let player = match server.get_player_by_name(&sender.get_name()) {
+            Some(p) => p,
+            None => {
+                let msg = service.messages.get_config().only_players;
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+                return Ok(0);
+            }
+        };
+
+        if let Ok(Some(_)) = service.find_kit(&kit_name) {
+            let raw = format!("<color:#E20000>Kit <color:#E2B700>{kit_name}</color> already exists. Use <color:#00E262>/kit edit {kit_name}</color> to update it.</color>");
+            send_feedback_error(&sender, &server, service.messages.component_raw(&raw));
+            return Ok(0);
+        }
+
+        let kit = capture_player_kit(&player, kit_name.clone());
+        if let Ok(rec) = kit.to_record() {
+            let _ = service.storage.save_kit(&rec);
+        }
+        let msg = service.messages.get_config().kit_saved;
+        send_feedback_success(&sender, &server, service.messages.component(&msg, &[("{name}", &kit_name)]));
+        Ok(0)
+    }
+}
+
+struct KitDeleteUsageHandler;
+impl CommandHandler for KitDeleteUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit delete <name></color>"));
+        Ok(0)
+    }
+}
+
+struct KitDeleteHandler;
+impl CommandHandler for KitDeleteHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let kit_name = match args.get_value("name") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit delete <name></color>"));
+                return Ok(0);
+            }
+        };
+
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+
+        if let Ok(Some(k)) = service.find_kit(&kit_name) {
+            let _ = service.storage.delete_kit(&k.name);
+            let msg = service.messages.get_config().kit_deleted;
+            send_feedback(
+                &sender,
+                &server,
+                service.messages.component(&msg, &[("{name}", &k.name)]),
+            );
+        } else {
+            let msg = service.messages.get_config().kit_not_found;
+            send_feedback_error(
+                &sender,
+                &server,
+                service.messages.component(&msg, &[("{name}", &kit_name)]),
+            );
+        }
+
+        Ok(0)
+    }
+}
+
+struct KitEditUsageHandler;
+impl CommandHandler for KitEditUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit edit <name></color>"));
+        Ok(0)
+    }
+}
+
+struct KitEditHandler;
+impl CommandHandler for KitEditHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let kit_name = match args.get_value("name") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit edit <name></color>"));
+                return Ok(0);
+            }
+        };
+
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+            return Ok(0);
+        }
+
+        let player = match server.get_player_by_name(&sender.get_name()) {
+            Some(p) => p,
+            None => {
+                let msg = service.messages.get_config().only_players;
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+                return Ok(0);
+            }
+        };
+
+        let existing = match service.find_kit(&kit_name) {
+            Ok(Some(k)) => k,
+            _ => {
+                let raw = format!("<color:#E20000>Kit <color:#E2B700>{kit_name}</color> was not found. Use <color:#00E262>/kit create {kit_name}</color> to create it.</color>");
+                send_feedback_error(&sender, &server, service.messages.component_raw(&raw));
+                return Ok(0);
+            }
+        };
+
+        let mut updated = capture_player_kit(&player, existing.name.clone());
+        updated.rules = existing.rules.into();
+        updated.display_item = existing.display_item.clone();
+        if let Ok(rec) = updated.to_record() {
+            let _ = service.storage.save_kit(&rec);
+        }
+
+        let msg = service.messages.get_config().kit_edited;
+        send_feedback_success(&sender, &server, service.messages.component(&msg, &[("{name}", &existing.name)]));
+        Ok(0)
+    }
+}
+
+struct KitListHandler;
+impl CommandHandler for KitListHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        if !check_admin_permission(&sender, &server) {
+            let msg = service.messages.get_config().no_permission;
+            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
             return Ok(0);
         }
 
         match service.storage.list_kits() {
             Ok(kits) if !kits.is_empty() => {
-                let mut msg = "<color:#E2B700>Configured Kits:</color>\n".to_string();
-                for k in kits {
-                    msg.push_str(&format!(
-                        "<color:#00E262>•</color> <color:#A0A0A0>{}</color> <color:#707070>(icon: {}, enabled: {})</color>\n",
-                        k.name, k.display_item, k.enabled
-                    ));
+                let header = format!(
+                    "<color:#E2B700><bold>Available Kits ({}):</bold></color>",
+                    kits.len()
+                );
+                send_feedback(&sender, &server, service.messages.component_raw(&header));
+                for kit in kits {
+                    let line = format!(
+                        "<color:#A0A0A0>• </color>{} <color:#555555>(icon: {})</color>",
+                        kit.name, kit.display_item
+                    );
+                    send_feedback(&sender, &server, service.messages.component_raw(&line));
                 }
-                send_feedback(&sender, &server, service.messages.component_raw(&msg));
             }
             _ => {
                 let msg = service.messages.get_config().kit_empty_list;
@@ -978,52 +1435,37 @@ impl CommandHandler for AdminKitListHandler {
     }
 }
 
-struct AdminSetLobbyHandler;
-impl CommandHandler for AdminSetLobbyHandler {
-    fn handle(
-        &self,
-        sender: CommandSender,
-        server: Server,
-        _args: ConsumedArgs,
-    ) -> Result<i32, CommandError> {
-        let service = get_service();
-        if !check_admin_permission(&sender, &server) {
-            let msg = service.messages.get_config().no_permission;
-            send_feedback(&sender, &server, service.messages.component(&msg, &[]));
-            return Ok(0);
-        }
-
-        if let Some(player) = server.get_player_by_name(&sender.get_name()) {
-            let pos = player.get_position();
-            let world_name = player.get_world().get_name();
-            let yaw = player.get_yaw();
-            let pitch = player.get_pitch();
-            let _ = service.config.update(|cfg| {
-                cfg.lobby_world = world_name;
-                cfg.lobby_x = pos.0;
-                cfg.lobby_y = pos.1;
-                cfg.lobby_z = pos.2;
-                cfg.lobby_yaw = yaw;
-                cfg.lobby_pitch = pitch;
-            });
-            let msg = service.messages.get_config().lobby_set;
-            send_feedback_success(&sender, &server, service.messages.component(&msg, &[]));
-        } else {
-            let msg = service.messages.get_config().only_players;
-            send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
-        }
+struct KitRenameUsageHandler;
+impl CommandHandler for KitRenameUsageHandler {
+    fn handle(&self, sender: CommandSender, server: Server, _args: ConsumedArgs) -> Result<i32, CommandError> {
+        send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit rename <name> <new_name></color>"));
         Ok(0)
     }
 }
 
-struct AdminReloadHandler;
-impl CommandHandler for AdminReloadHandler {
+struct KitRenameHandler;
+impl CommandHandler for KitRenameHandler {
     fn handle(
         &self,
         sender: CommandSender,
         server: Server,
-        _args: ConsumedArgs,
+        args: ConsumedArgs,
     ) -> Result<i32, CommandError> {
+        let old_name = match args.get_value("name") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit rename <name> <new_name></color>"));
+                return Ok(0);
+            }
+        };
+        let new_name = match args.get_value("new_name") {
+            Arg::Simple(s) | Arg::Msg(s) => s,
+            _ => {
+                send_feedback_error(&sender, &server, get_service().messages.component_raw("<color:#E20000>Usage: /kit rename <name> <new_name></color>"));
+                return Ok(0);
+            }
+        };
+
         let service = get_service();
         if !check_admin_permission(&sender, &server) {
             let msg = service.messages.get_config().no_permission;
@@ -1031,166 +1473,183 @@ impl CommandHandler for AdminReloadHandler {
             return Ok(0);
         }
 
-        let _ = service.config.reload();
-        let _ = service.messages.reload();
-        let msg = service.messages.get_config().reload_success;
-        send_feedback_success(&sender, &server, service.messages.component(&msg, &[]));
+        let existing = match service.find_kit(&old_name) {
+            Ok(Some(k)) => k,
+            _ => {
+                let msg = service.messages.get_config().kit_not_found;
+                send_feedback_error(
+                    &sender,
+                    &server,
+                    service.messages.component(&msg, &[("{name}", &old_name)]),
+                );
+                return Ok(0);
+            }
+        };
+
+        if let Err(e) = service.storage.rename_kit(&existing.name, &new_name) {
+            let raw = format!("<color:#E20000>Failed to rename kit: {e}</color>");
+            send_feedback_error(&sender, &server, service.messages.component_raw(&raw));
+            return Ok(0);
+        }
+
+        let msg = service.messages.get_config().kit_renamed;
+        send_feedback_success(
+            &sender,
+            &server,
+            service.messages.component(
+                &msg,
+                &[("{old_name}", &existing.name), ("{new_name}", &new_name)],
+            ),
+        );
         Ok(0)
     }
-}
-
-fn build_arena_node() -> CommandNode {
-    CommandNode::literal("arena")
-        .execute(AdminHelpHandler)
-        .then(
-            CommandNode::literal("create").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaCreateHandler)
-                    .then(
-                        CommandNode::argument("dimension", &ArgumentType::String(StringType::SingleWord))
-                            .execute(AdminArenaCreateHandler),
-                    ),
-            ),
-        )
-        .then(
-            CommandNode::literal("setspawn1").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetSpawn1Handler),
-            ),
-        )
-        .then(
-            CommandNode::literal("setspawn2").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetSpawn2Handler),
-            ),
-        )
-        .then(
-            CommandNode::literal("setspectator").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetSpectatorHandler),
-            ),
-        )
-        .then(
-            CommandNode::literal("setbounds").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetBoundsHandler)
-                    .then(
-                        CommandNode::argument("radius", &ArgumentType::String(StringType::SingleWord))
-                            .execute(AdminArenaSetBoundsHandler),
-                    ),
-            ),
-        )
-        .then(
-            CommandNode::literal("tp").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaTpHandler),
-            ),
-        )
-        .then(CommandNode::literal("leave").execute(AdminArenaLeaveHandler))
-        .then(
-            CommandNode::literal("delete").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaDeleteHandler),
-            ),
-        )
-        .then(CommandNode::literal("list").execute(AdminArenaListHandler))
 }
 
 fn build_arena_tree() -> Command {
     let aliases = ["arena".to_string(), "arenas".to_string()];
     Command::new(&aliases, "Arena management command")
-        .execute(AdminHelpHandler)
+        .execute(AdminArenaHelpHandler)
         .then(
-            CommandNode::literal("create").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaCreateHandler)
-                    .then(
-                        CommandNode::argument("dimension", &ArgumentType::String(StringType::SingleWord))
-                            .execute(AdminArenaCreateHandler),
-                    ),
-            ),
+            CommandNode::literal("create")
+                .execute(AdminArenaCreateUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaCreateHandler)
+                        .then(
+                            CommandNode::argument("dimension", &ArgumentType::String(StringType::SingleWord))
+                                .execute(AdminArenaCreateHandler),
+                        ),
+                ),
         )
         .then(
-            CommandNode::literal("setspawn1").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetSpawn1Handler),
-            ),
+            CommandNode::literal("setspawn1")
+                .execute(AdminArenaSetSpawn1UsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaSetSpawn1Handler),
+                ),
         )
         .then(
-            CommandNode::literal("setspawn2").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetSpawn2Handler),
-            ),
+            CommandNode::literal("setspawn2")
+                .execute(AdminArenaSetSpawn2UsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaSetSpawn2Handler),
+                ),
         )
         .then(
-            CommandNode::literal("setspectator").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetSpectatorHandler),
-            ),
+            CommandNode::literal("setspectator")
+                .execute(AdminArenaSetSpectatorUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaSetSpectatorHandler),
+                ),
         )
         .then(
-            CommandNode::literal("setbounds").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaSetBoundsHandler)
-                    .then(
-                        CommandNode::argument("radius", &ArgumentType::String(StringType::SingleWord))
-                            .execute(AdminArenaSetBoundsHandler),
-                    ),
-            ),
+            CommandNode::literal("setbounds")
+                .execute(AdminArenaSetBoundsUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaSetBoundsHandler)
+                        .then(
+                            CommandNode::argument("radius", &ArgumentType::String(StringType::SingleWord))
+                                .execute(AdminArenaSetBoundsHandler),
+                        ),
+                ),
         )
         .then(
-            CommandNode::literal("tp").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaTpHandler),
-            ),
+            CommandNode::literal("tp")
+                .execute(AdminArenaTpUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaTpHandler),
+                ),
         )
         .then(CommandNode::literal("leave").execute(AdminArenaLeaveHandler))
         .then(
-            CommandNode::literal("delete").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminArenaDeleteHandler),
-            ),
+            CommandNode::literal("delete")
+                .execute(AdminArenaDeleteUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(AdminArenaDeleteHandler),
+                ),
         )
         .then(CommandNode::literal("list").execute(AdminArenaListHandler))
 }
 
-fn build_kit_node() -> CommandNode {
-    CommandNode::literal("kit")
-        .execute(AdminHelpHandler)
+fn build_kit_tree() -> Command {
+    let aliases = ["kit".to_string(), "kits".to_string()];
+    Command::new(&aliases, "Kit management command")
+        .execute(KitHelpHandler)
         .then(
-            CommandNode::literal("save").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminKitSaveHandler),
-            ),
+            CommandNode::literal("create")
+                .execute(KitCreateUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(KitCreateHandler),
+                ),
         )
         .then(
-            CommandNode::literal("delete").then(
-                CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
-                    .execute(AdminKitDeleteHandler),
-            ),
+            CommandNode::literal("delete")
+                .execute(KitDeleteUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(KitDeleteHandler),
+                ),
         )
-        .then(CommandNode::literal("list").execute(AdminKitListHandler))
-}
-
-fn build_admin_node() -> CommandNode {
-    CommandNode::literal("admin")
-        .execute(AdminHelpHandler)
-        .then(build_arena_node())
-        .then(build_kit_node())
-        .then(CommandNode::literal("setlobby").execute(AdminSetLobbyHandler))
-        .then(CommandNode::literal("reload").execute(AdminReloadHandler))
+        .then(
+            CommandNode::literal("edit")
+                .execute(KitEditUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(KitEditHandler),
+                ),
+        )
+        .then(CommandNode::literal("list").execute(KitListHandler))
+        .then(
+            CommandNode::literal("rename")
+                .execute(KitRenameUsageHandler)
+                .then(
+                    CommandNode::argument("name", &ArgumentType::String(StringType::SingleWord))
+                        .execute(KitRenameUsageHandler)
+                        .then(
+                            CommandNode::argument("new_name", &ArgumentType::String(StringType::Greedy))
+                                .execute(KitRenameHandler),
+                        ),
+                ),
+        )
 }
 
 fn build_duel_tree() -> Command {
-    let duel_aliases = ["duel".to_string(), "duels".to_string(), "1v1".to_string()];
+    let duel_aliases = ["duel".to_string(), "duels".to_string(), "1v1".to_string(), "fight".to_string()];
     Command::new(&duel_aliases, "Practice duel command")
         .execute(DuelHelpHandler)
+        .then(
+            CommandNode::literal("invite")
+                .execute(DuelInviteUsageHandler)
+                .then(
+                    CommandNode::argument("player", &ArgumentType::String(StringType::SingleWord))
+                        .execute(DuelRootHandler)
+                        .then(
+                            CommandNode::argument("kit", &ArgumentType::String(StringType::SingleWord))
+                                .execute(DuelInviteKitHandler),
+                        ),
+                ),
+        )
         .then(
             CommandNode::literal("accept")
                 .execute(DuelAcceptHandler)
                 .then(
                     CommandNode::argument("player", &ArgumentType::String(StringType::SingleWord))
                         .execute(DuelAcceptHandler),
+                ),
+        )
+        .then(
+            CommandNode::literal("deny")
+                .execute(DuelDeclineHandler)
+                .then(
+                    CommandNode::argument("player", &ArgumentType::String(StringType::SingleWord))
+                        .execute(DuelDeclineHandler),
                 ),
         )
         .then(
@@ -1219,10 +1678,13 @@ fn build_duel_tree() -> Command {
                 ),
         )
         .then(CommandNode::literal("top").execute(DuelTopHandler))
-        .then(build_admin_node())
         .then(
             CommandNode::argument("player", &ArgumentType::String(StringType::SingleWord))
-                .execute(DuelRootHandler),
+                .execute(DuelRootHandler)
+                .then(
+                    CommandNode::argument("kit", &ArgumentType::String(StringType::SingleWord))
+                        .execute(DuelInviteKitHandler),
+                ),
         )
 }
 
@@ -1251,23 +1713,27 @@ pub fn register_commands(context: &Context) {
         tracing::info!("Registered permission {}", PERM_ADMIN);
     }
 
-    context.register_command(build_duel_tree(), PERM_USER);
-    context.register_command(build_arena_tree(), PERM_ADMIN);
-
-    let admin_aliases = [
+    // 1. /pumpkin-duels (aliases: pd, pumpkinduels, dueladmin, duelsadmin, da)
+    let pd_aliases = [
+        "pumpkin-duels".to_string(),
+        "pd".to_string(),
+        "pumpkinduels".to_string(),
         "dueladmin".to_string(),
         "duelsadmin".to_string(),
         "da".to_string(),
     ];
-    let admin_cmd = Command::new(&admin_aliases, "Duels administration command")
-        .execute(AdminHelpHandler)
-        .then(build_arena_node())
-        .then(build_kit_node())
-        .then(CommandNode::literal("setlobby").execute(AdminSetLobbyHandler))
-        .then(CommandNode::literal("reload").execute(AdminReloadHandler));
-    context.register_command(admin_cmd, PERM_ADMIN);
+    let pd_cmd = Command::new(&pd_aliases, "Pumpkin-Duels administration command")
+        .execute(PdHelpHandler)
+        .then(CommandNode::literal("version").execute(PdVersionHandler))
+        .then(CommandNode::literal("reload").execute(PdReloadHandler))
+        .then(CommandNode::literal("setlobby").execute(PdSetLobbyHandler));
+    context.register_command(pd_cmd, PERM_ADMIN);
 
-    let queue_aliases = ["queue".to_string(), "joinqueue".to_string()];
+    // 2. /duel (aliases: duels, 1v1, fight)
+    context.register_command(build_duel_tree(), PERM_USER);
+
+    // 3. /queue (aliases: q, joinqueue)
+    let queue_aliases = ["queue".to_string(), "q".to_string(), "joinqueue".to_string()];
     let queue_cmd = Command::new(&queue_aliases, "Queue for a duel")
         .execute(DuelQueueHandler)
         .then(
@@ -1276,7 +1742,28 @@ pub fn register_commands(context: &Context) {
         );
     context.register_command(queue_cmd, PERM_USER);
 
-    let leave_aliases = ["leavequeue".to_string(), "unqueue".to_string()];
+    // /leavequeue (aliases: lq, leave, unqueue)
+    let leave_aliases = ["leavequeue".to_string(), "lq".to_string(), "leave".to_string(), "unqueue".to_string()];
     let leave_cmd = Command::new(&leave_aliases, "Leave duel queue").execute(DuelLeaveHandler);
     context.register_command(leave_cmd, PERM_USER);
+
+    // 4. In-match commands: /surrender (ff, forfeit) and /ping (ms)
+    let surrender_aliases = ["surrender".to_string(), "ff".to_string(), "forfeit".to_string()];
+    let surrender_cmd = Command::new(&surrender_aliases, "Surrender current match").execute(SurrenderHandler);
+    context.register_command(surrender_cmd, PERM_USER);
+
+    let ping_aliases = ["ping".to_string(), "ms".to_string()];
+    let ping_cmd = Command::new(&ping_aliases, "View latency ping")
+        .execute(PingHandler)
+        .then(
+            CommandNode::argument("player", &ArgumentType::String(StringType::SingleWord))
+                .execute(PingHandler),
+        );
+    context.register_command(ping_cmd, PERM_USER);
+
+    // 5. /arena (aliases: arenas)
+    context.register_command(build_arena_tree(), PERM_ADMIN);
+
+    // 6. /kit (aliases: kits)
+    context.register_command(build_kit_tree(), PERM_ADMIN);
 }

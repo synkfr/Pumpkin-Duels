@@ -341,6 +341,15 @@ impl SqliteStorage {
         Ok(affected > 0)
     }
 
+    pub fn rename_kit(&self, old_name: &str, new_name: &str) -> Result<bool, StorageError> {
+        let conn = self.conn.lock().unwrap();
+        let affected = conn.execute(
+            "UPDATE duels_kits SET name = ?1 WHERE name = ?2",
+            params![new_name, old_name],
+        )?;
+        Ok(affected > 0)
+    }
+
     pub fn get_or_create_stats(
         &self,
         uuid: &str,
@@ -384,6 +393,28 @@ impl SqliteStorage {
                 elo: 1000,
                 last_played: now,
             })
+        }
+    }
+
+    pub fn get_stats_by_name(&self, name: &str) -> Result<Option<PlayerStatsRecord>, StorageError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT uuid, name, wins, losses, current_streak, best_streak, elo, last_played FROM duels_player_stats WHERE LOWER(name) = LOWER(?1)"
+        )?;
+        let mut rows = stmt.query(params![name])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(PlayerStatsRecord {
+                uuid: row.get(0)?,
+                name: row.get(1)?,
+                wins: row.get(2)?,
+                losses: row.get(3)?,
+                current_streak: row.get(4)?,
+                best_streak: row.get(5)?,
+                elo: row.get(6)?,
+                last_played: row.get(7)?,
+            }))
+        } else {
+            Ok(None)
         }
     }
 

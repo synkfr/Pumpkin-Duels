@@ -9,52 +9,28 @@ use duels_gui::{Button, GuiBuilder, GuiSessionRegistry, ItemDescriptor};
 use duels_storage::SqliteStorage;
 use pumpkin_plugin_api::common::Position;
 use pumpkin_plugin_api::player::Player;
-use pumpkin_plugin_api::wit::pumpkin::plugin::sounds::{Sound, SoundCategory};
 use pumpkin_plugin_api::{Screen, Server};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-pub fn play_ui_click(player: &Player) {
-    player.play_sound(Sound::UiButtonClick, SoundCategory::Ui, 1.0, 1.0);
-}
+pub fn play_ui_click(_player: &Player) {}
 
-pub fn play_sound_error(player: &Player) {
-    player.play_sound(Sound::BlockNoteBlockBass, SoundCategory::Ui, 1.0, 0.8);
-}
+pub fn play_sound_error(_player: &Player) {}
 
-pub fn play_sound_success(player: &Player) {
-    player.play_sound(Sound::BlockNoteBlockChime, SoundCategory::Ui, 1.0, 1.2);
-}
+pub fn play_sound_success(_player: &Player) {}
 
-pub fn play_duel_sent(player: &Player) {
-    player.play_sound(Sound::BlockNoteBlockChime, SoundCategory::Players, 1.0, 1.2);
-}
+pub fn play_duel_sent(_player: &Player) {}
 
-pub fn play_duel_received(player: &Player) {
-    player.play_sound(Sound::BlockNoteBlockPling, SoundCategory::Players, 1.0, 1.5);
-}
+pub fn play_duel_received(_player: &Player) {}
 
-pub fn play_countdown_tick(player: &Player, remaining_sec: u32) {
-    let pitch = match remaining_sec {
-        1 => 1.5,
-        2 => 1.2,
-        _ => 1.0,
-    };
-    player.play_sound(Sound::BlockNoteBlockPling, SoundCategory::Ui, 1.0, pitch);
-}
+pub fn play_countdown_tick(_player: &Player, _remaining_sec: u32) {}
 
-pub fn play_match_start(player: &Player) {
-    player.play_sound(Sound::EntityPlayerLevelup, SoundCategory::Players, 1.0, 1.2);
-}
+pub fn play_match_start(_player: &Player) {}
 
-pub fn play_victory(player: &Player) {
-    player.play_sound(Sound::UiToastChallengeComplete, SoundCategory::Ui, 1.0, 1.0);
-}
+pub fn play_victory(_player: &Player) {}
 
-pub fn play_defeat(player: &Player) {
-    player.play_sound(Sound::EntityWitherDeath, SoundCategory::Players, 0.8, 0.8);
-}
+pub fn play_defeat(_player: &Player) {}
 
 pub struct DuelsService {
     pub storage: Arc<SqliteStorage>,
@@ -252,9 +228,7 @@ impl DuelsService {
             })?;
 
         let kit = self
-            .storage
-            .get_kit(&challenge.kit_name)
-            .map_err(|e| e.to_string())?
+            .find_kit(&challenge.kit_name)?
             .ok_or_else(|| {
                 let msg = self.messages.get_config().kit_not_found;
                 self.messages.format(&msg, &[("{name}", &challenge.kit_name)])
@@ -367,9 +341,7 @@ impl DuelsService {
 
             if let (Some(p1), Some(p2)) = (p1, p2) {
                 let kit_rec = self
-                    .storage
-                    .get_kit(&p1_entry.kit_name)
-                    .map_err(|e| e.to_string())?
+                    .find_kit(&p1_entry.kit_name)?
                     .ok_or_else(|| self.messages.get_config().kit_not_found)?;
                 let kit = Kit::from_record(kit_rec)?;
                 self.start_match(&p1, &p2, kit, server)?;
@@ -672,8 +644,9 @@ impl DuelsService {
             if idx >= 9 {
                 break;
             }
+            let display_name = crate::minimessage::minimessage_to_legacy(&kit.name);
             let item_desc = ItemDescriptor::new(&kit.display_item, 1)
-                .with_name(&format!("§a{}", kit.name))
+                .with_name(&display_name)
                 .with_lore("§7Click to select this kit!");
 
             let service = self.clone();
@@ -694,6 +667,62 @@ impl DuelsService {
         }
 
         builder.open(player, &self.gui_registry);
+        Ok(())
+    }
+
+    pub fn find_kit(&self, query: &str) -> Result<Option<duels_storage::KitRecord>, String> {
+        if let Ok(Some(k)) = self.storage.get_kit(query) {
+            return Ok(Some(k));
+        }
+        let all = self.storage.list_kits().map_err(|e| e.to_string())?;
+        let stripped_query = crate::minimessage::strip_minimessage(query).to_lowercase();
+        for k in all {
+            if k.name.eq_ignore_ascii_case(query) {
+                return Ok(Some(k));
+            }
+            let stripped_name = crate::minimessage::strip_minimessage(&k.name).to_lowercase();
+            if stripped_name == stripped_query {
+                return Ok(Some(k));
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn surrender_match(&self, player: &Player, server: &Server) -> Result<(), String> {
+        let p_uuid = player.get_id().to_string();
+        let match_id = {
+            let map = self.player_match_map.lock().unwrap();
+            map.get(&p_uuid).cloned()
+        }
+        .ok_or_else(|| self.messages.get_config().not_in_match)?;
+
+        let (winner_uuid, winner_name) = {
+            let matches = self.active_matches.lock().unwrap();
+            let session = matches
+                .get(&match_id)
+                .ok_or_else(|| self.messages.get_config().not_in_match)?;
+            if session.player1_uuid == p_uuid {
+                (session.player2_uuid.clone(), session.player2_name.clone())
+            } else {
+                (session.player1_uuid.clone(), session.player1_name.clone())
+            }
+        };
+
+        let msg = self.messages.get_config().match_surrendered;
+        let surrender_comp = self
+            .messages
+            .component(&msg, &[("{player}", &player.get_name())]);
+
+        player.send_system_message(surrender_comp, false);
+        if let Some(winner) = server.get_player_by_name(&winner_name) {
+            winner.send_system_message(
+                self.messages
+                    .component(&msg, &[("{player}", &player.get_name())]),
+                false,
+            );
+        }
+
+        self.end_match(&match_id, &winner_uuid, server);
         Ok(())
     }
 }

@@ -279,6 +279,72 @@ fn normalize_hex(s: &str) -> Option<String> {
     }
 }
 
+pub fn strip_minimessage(input: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for ch in input.chars() {
+        if ch == '<' {
+            in_tag = true;
+        } else if ch == '>' && in_tag {
+            in_tag = false;
+        } else if !in_tag {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+pub fn minimessage_to_legacy(input: &str) -> String {
+    let mut out = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '<' {
+            let mut tag = String::new();
+            let mut closed = false;
+            while let Some(&next_ch) = chars.peek() {
+                if next_ch == '>' {
+                    chars.next();
+                    closed = true;
+                    break;
+                }
+                tag.push(next_ch);
+                chars.next();
+            }
+            if closed {
+                let tag_lower = tag.to_ascii_lowercase();
+                if tag_lower.starts_with('/') {
+                    out.push_str("§r");
+                } else if tag_lower == "bold" || tag_lower == "b" {
+                    out.push_str("§l");
+                } else if tag_lower == "italic" || tag_lower == "i" || tag_lower == "em" {
+                    out.push_str("§o");
+                } else if tag_lower == "underlined" || tag_lower == "u" {
+                    out.push_str("§n");
+                } else if tag_lower == "strikethrough" || tag_lower == "st" {
+                    out.push_str("§m");
+                } else if tag_lower == "obfuscated" || tag_lower == "obf" {
+                    out.push_str("§k");
+                } else if tag_lower == "reset" || tag_lower == "r" {
+                    out.push_str("§r");
+                } else if let Some(hex) = extract_color(&tag) {
+                    let clean = hex.trim_start_matches('#');
+                    out.push_str("§x");
+                    for c in clean.chars() {
+                        out.push('§');
+                        out.push(c);
+                    }
+                }
+            } else {
+                out.push('<');
+                out.push_str(&tag);
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,5 +383,12 @@ mod tests {
         assert_eq!(val["extra"][0]["clickEvent"]["command"], "/duel accept Notch");
         assert_eq!(val["extra"][0]["hoverEvent"]["action"], "show_text");
         assert_eq!(val["extra"][0]["hoverEvent"]["contents"], "Click to accept!");
+    }
+
+    #[test]
+    fn test_strip_and_legacy_minimessage() {
+        let input = "<color:#00E262><bold>NoDebuff</bold></color>";
+        assert_eq!(strip_minimessage(input), "NoDebuff");
+        assert_eq!(minimessage_to_legacy(input), "§x§0§0§E§2§6§2§lNoDebuff§r§r");
     }
 }
