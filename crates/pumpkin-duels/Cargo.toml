@@ -1,0 +1,20 @@
+[package]
+name = "pumpkin-duels"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+duels-config.workspace = true
+duels-storage.workspace = true
+duels-gui.workspace = true
+duels-core.workspace = true
+pumpkin-plugin-api.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
