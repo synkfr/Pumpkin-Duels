@@ -62,10 +62,11 @@ List all registered kits and their active display names:
 
 ## Kit Selector Interface
 
-When players initiate a challenge with `/duel <player>` or enter matchmaking with `/queue`, Pumpkin-Duels displays an interactive chest inventory GUI:
+When players initiate a challenge with `/duel <player>` or enter matchmaking with `/queue`, Pumpkin-Duels delivers a platform-tailored selection interface:
 
-- **Kit Slot Buttons**: Each registered kit is represented as a clickable item button displaying the kit name and summary lore.
-- **Click Handling**: Clicking a kit icon directly queues the player or dispatches the duel challenge to the targeted opponent.
+- **Java Edition (1.21.4+)**: Presents native client dialog screens with interactive ActionButtons for each available kit. Clicking an action button immediately dispatches the challenge or enqueues the player.
+- **Bedrock Edition (1.26.51+)**: Dispatches native Bedrock SimpleForms populated with kit buttons and item icons, designed specifically for mobile and console touch/controller inputs.
+- **Virtual Chest GUI & Chat Menus**: Provides an interactive chest inventory interface alongside hoverable, clickable MiniMessage chat menus as reliable fallbacks.
 
 ---
 

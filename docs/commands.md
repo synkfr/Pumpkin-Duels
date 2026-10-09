@@ -66,14 +66,15 @@ Quick command to exit any active matchmaking queue.
 
 ### /surrender
 
-Forfeits your active duel match immediately. The opposing player is awarded the victory, ELO ratings are updated, and both players are restored and teleported to the lobby.
+Forfeits your active duel match. Running the base command displays an interactive confirmation dialog (or prompts for confirmation in chat). Running `/surrender confirm` executes the forfeiture immediately, awarding the victory to your opponent, updating ELO ratings, and returning both participants to the lobby.
 
 - **Aliases**: `/ff`, `/forfeit`
 - **Permission**: `pumpkin-duels:duels.use`
 
 | Syntax | Description |
 | :--- | :--- |
-| `/surrender` | Forfeits your current match. |
+| `/surrender` | Displays an interactive confirmation dialog to forfeit the active match. |
+| `/surrender confirm` | Confirms and executes match forfeiture immediately. |
 
 ---
 

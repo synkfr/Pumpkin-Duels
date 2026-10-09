@@ -2,11 +2,17 @@
 
 This guide explains how to install, configure, and run Pumpkin-Duels on your Pumpkin server.
 
-## System Requirements
+## Server Version Requirements
 
-- **Server Software**: Pumpkin Minecraft server (version 0.2.0 or newer with WebAssembly plugin support enabled).
-- **Architecture**: WebAssembly component model (`wasm32-wasip2`).
-- **Operating System**: Linux (x86_64, aarch64), macOS, or Windows.
+| Component | Minimum Required Version | Notes |
+| :--- | :--- | :--- |
+| **Pumpkin Server** | `0.2.0` (or `0.2.0+26.3-26.51`+) | Requires WebAssembly WASI (`wasm32-wasip2`) plugin engine. |
+| **Minecraft: Java Edition** | `1.21.4`+ (Protocol `777`) | Required for modern native client dialog screens and ActionButtons. |
+| **Minecraft: Bedrock Edition** | `1.26.51`+ (Protocol `2193`) | Native cross-play ModalForms and SimpleForms support. |
+| **Plugin Target Architecture** | `wasm32-wasip2` | WASI Preview 2 component specification. |
+| **Operating System** | Linux (x86_64, aarch64), macOS, Windows | Server host runtime environments. |
+
+---
 
 ## Installation
 
@@ -40,69 +46,84 @@ On initial startup, Pumpkin loads the plugin and generates the default configura
 plugins/pumpkin-duels/
 |-- config.toml       # Core engine settings and lobby coordinates
 |-- messages.toml     # Chat messages and MiniMessage formatting
-`-- duels.db          # SQLite database storing kits, arenas, and player stats
+`-- pumpkin-duels.db  # SQLite database storing kits, arenas, and player stats
 ```
+
+---
 
 ## Initial Setup Walkthrough
 
 ### Step 1: Configure Lobby Coordinates
 
-Open `plugins/pumpkin-duels/config.toml` and set the coordinates where players will be teleported after a match finishes:
+Stand at the desired location in your lobby world and execute:
+
+```
+/pumpkin-duels setlobby
+```
+(Alias: `/pd setlobby`)
+
+Alternatively, open `plugins/pumpkin-duels/config.toml` and manually set the coordinates where players return after matches:
 
 ```toml
-[lobby]
-world = "minecraft:overworld"
-x = 0.5
-y = 65.0
-z = 0.5
-yaw = 0.0
-pitch = 0.0
+lobby_world = "minecraft:overworld"
+lobby_x = 0.5
+lobby_y = 65.0
+lobby_z = 0.5
+lobby_yaw = 0.0
+lobby_pitch = 0.0
 ```
 
-Run `/duels admin reload` to reload configuration files without restarting the server.
+Run `/pumpkin-duels reload` to apply configuration changes without restarting the server.
 
 ### Step 2: Create an Arena Template
 
-1. Generate a new void template arena:
+1. Generate a new void template arena with a starter stone platform:
    ```
-   /duels admin arena create classic_arena minecraft:overworld
+   /arena create classic minecraft:overworld
    ```
-2. Build the arena terrain or boundaries inside the template world.
-3. Stand at the first player spawn location and run:
+2. Teleport to the template world to inspect and build arena structures:
    ```
-   /duels admin arena setspawn1 classic_arena
+   /arena tp classic
    ```
-4. Stand at the second player spawn location and run:
+3. Stand at Spawn Point 1 and run:
    ```
-   /duels admin arena setspawn2 classic_arena
+   /arena setspawn1 classic
+   ```
+4. Stand at Spawn Point 2 and run:
+   ```
+   /arena setspawn2 classic
    ```
 5. Set the spectator vantage point:
    ```
-   /duels admin arena setspectator classic_arena
+   /arena setspectator classic
    ```
-6. Define the vertical boundaries (for instance, min Y of 0 and max Y of 120):
+6. Define the boundary radius:
    ```
-   /duels admin arena setbounds classic_arena 0.0 120.0
+   /arena setbounds classic 50.0
    ```
-7. Save and enable the arena:
+7. Return to the lobby:
    ```
-   /duels admin arena save classic_arena
+   /arena leave
+   ```
+8. Verify that the arena is registered:
+   ```
+   /arena list
    ```
 
 ### Step 3: Create a Duel Kit
 
-1. Place the items and equipment you want in the kit directly into your player inventory and armor slots.
-2. Run the kit creation command:
+1. Place the items and equipment you want in the kit directly into your inventory and armor slots.
+2. Save the kit:
    ```
-   /duels admin kit create nodebuff "NoDebuff"
+   /kit create nodebuff
    ```
-3. Set the icon item used in GUI menus:
+3. Customize display name with MiniMessage formatting:
    ```
-   /duels admin kit setdisplay nodebuff minecraft:diamond_sword
+   /kit rename nodebuff <color:#FFA500><bold>No Debuff</bold></color>
    ```
-4. Save the kit:
+4. Verify registered kits:
    ```
-   /duels admin kit save nodebuff
+   /kit list
    ```
 
 Players can now challenge each other or queue for matches with this kit.

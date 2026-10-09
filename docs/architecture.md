@@ -13,6 +13,15 @@ Pumpkin-Duels/
 `-- docs/                  # VitePress documentation site
 ```
 
+## Target Platform and Requirements
+
+| Requirement | Minimum Version | Notes |
+| :--- | :--- | :--- |
+| **Server Software** | Pumpkin `0.2.0` (`0.2.0+26.3-26.51`+) | Native WebAssembly (`wasm32-wasip2`) component model host. |
+| **Java Edition** | Minecraft `1.21.4`+ (Protocol `777`) | Supports native client dialog screens with ActionButtons. |
+| **Bedrock Edition** | Minecraft `1.26.51`+ (Protocol `2193`) | Native cross-play ModalForms and SimpleForms without Geyser. |
+| **Compilation Target** | `wasm32-wasip2` | WASI Preview 2 component specification. |
+
 ---
 
 ## Workspace Crates
@@ -59,12 +68,20 @@ Chest inventory GUI library:
 The primary plugin crate compiling to a CDYLIB WebAssembly module:
 
 - **Plugin Entry**: Implements `pumpkin_plugin_api::PumpkinPlugin`.
-- **Event Listeners**:
-  - `PlayerDeathEvent`: Detects fatal damage during duels, identifies winner and loser, and triggers match conclusion without allowing normal death drops.
-  - `PlayerMoveEvent`: Restricts movement during the countdown phase and detects arena boundary violations.
-  - `BlockBreakEvent` / `BlockPlaceEvent`: Enforces kit rules such as `allow_building = false`.
-- **Dynamic Instancing**: Interacts with the filesystem to duplicate template world directories into `duel_<match_id>` instances and removes them completely upon match conclusion.
-- **Sound and Title Feedback**: Sends audio cues for countdown ticks, hits, and victories, alongside synchronized title displays.
+- **Cross-Platform UI (`ui.rs`)**:
+  - Dispatches native Java 1.21+ Dialog screens with interactive ActionButtons.
+  - Dispatches native Bedrock ModalForms and SimpleForms with custom item icons.
+  - Provides fallback chest GUI for legacy Java clients.
+- **Event Listeners (`listeners.rs`)**:
+  - `DialogClickActionEvent`: Intercepts client dialog button actions (`duel:accept:<player>`, `duel:surrender:confirm`, `duel:queue:<kit>`).
+  - `BedrockFormResponseEvent`: Intercepts Bedrock form submissions and kit selections.
+  - `EntityDamageEvent`: Cancels pre-match damage, updates live Action Bar combat HUD meters, and spawns hit particles.
+  - `PlayerDeathEvent`: Concludes matches, updates ELO, and restores inventories without item loss.
+  - `PlayerMoveEvent`: Detects boundary ringouts while camera stays smooth under native `set_movement_locked(true)`.
+  - `PlayerInteractEvent`: Intercepts lobby sword right-clicks to open kit selectors.
+  - `BlockBreakEvent` / `BlockPlaceEvent`: Enforces kit building restrictions (`allow_build = false`).
+- **Dynamic Instancing**: Duplicates template world directories into `duel_<match_id>` instances and completely removes temporary directories upon match conclusion.
+- **Immersion**: Controls movement locking during countdowns, Action Bar combat HUDs, and celebratory victory particle emitters.
 
 ---
 

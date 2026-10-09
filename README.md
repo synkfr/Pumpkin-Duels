@@ -2,14 +2,28 @@
 
 Pumpkin-Duels is a high-performance 1v1 practice duel plugin built in Rust for the [Pumpkin](https://pumpkinmc.org) Minecraft server. It compiles directly to WebAssembly (`wasm32-wasip2`), executing safely inside the server runtime at near-native speeds.
 
+## Server Version Requirements
+
+| Component | Minimum Required Version | Notes |
+| :--- | :--- | :--- |
+| **Pumpkin Server** | `0.2.0` (or `0.2.0+26.3-26.51`+) | Native WebAssembly (`wasm32-wasip2`) component runtime. |
+| **Minecraft: Java Edition** | `1.21.4`+ (Protocol `777`) | Native client dialog screens with interactive ActionButtons. |
+| **Minecraft: Bedrock Edition** | `1.26.51`+ (Protocol `2193`) | Native cross-play ModalForms and SimpleForms. |
+| **WASM Target** | `wasm32-wasip2` | WASI Preview 2 component model architecture. |
+
+---
+
 ## Features
 
-- **Isolated World Instancing**: Duplicates arena template directories into isolated match instances (`worlds/duel_<match_id>`) for concurrent matches. Cleans up and deletes temporary directories immediately upon match termination to prevent world data accumulation.
-- **Matchmaking and Direct Challenges**: Supports direct player challenges with interactive clickable chat prompts (`[ACCEPT]` and `[DECLINE]`) and automated queue matchmaking per kit.
-- **Chest GUI Kit Selector**: Virtual inventory interface allowing players to select kits when challenging opponents or entering the queue.
-- **In-Game Kit Management**: Capture your current inventory, armor, and offhand items directly into reusable kits with `/dueladmin kit save <name>`.
+- **Cross-Platform UI Engine**: Native Java 1.21+ Dialog screens with interactive ActionButtons for Java players, and native Bedrock ModalForms / SimpleForms for Bedrock mobile and console players.
+- **Isolated World Instancing**: Duplicates arena template directories into isolated match instances (`worlds/duel_<match_id>`) for concurrent matches. Automatically purges temporary directories upon match conclusion to prevent world data accumulation.
+- **True Movement Freeze**: Employs native `player.set_movement_locked(true)` during the 5-second countdown. Allows players to rotate their cameras smoothly without coordinate jitter or teleport snapping.
+- **Action Bar Combat HUD**: Delivers real-time opponent health meters and combo counters (`Opponent: Player | HP: 14.5`) via `player.show_actionbar()`.
+- **Matchmaking and Direct Challenges**: Supports direct challenges with interactive dialogs and clickable chat buttons (`[ACCEPT]` and `[DECLINE]`), alongside automated kit queues.
+- **Chest GUI & Bedrock Kit Selectors**: Virtual chest inventory interface for Java players and native button menus for Bedrock players.
+- **In-Game Kit Management**: Capture your inventory loadouts into reusable kits with `/kit create <name>` and customize titles using MiniMessage with `/kit rename <name> <display>`.
 - **ELO and Leaderboards**: Standardized ELO rating system tracking player ratings, wins, losses, win rates, and win streaks. View stats with `/duel stats` and top players with `/duel top`.
-- **Sound and Visual Feedback**: Synchronized title countdowns, sound effects for hits, countdown ticks, victories, and defeats.
+- **Victory Particle Celebrations**: Celebratory particle fanfare (`TotemOfUndying`, `CherryLeaves`, `Firework`) spawned around victors.
 - **Config Hot-Reconciliation**: TOML configuration engine that preserves existing comments and structure while automatically migrating newly added settings.
 - **Embedded SQLite Storage**: Built-in SQLite database storing player stats, kits, arena templates, and match history.
 
@@ -38,10 +52,10 @@ Documentation topics:
 
 ## Installation
 
-1. Ensure your Pumpkin server supports WebAssembly plugins (`wasm32-wasip2`).
+1. Verify that your Pumpkin server is version `0.2.0` or newer with WebAssembly plugin support enabled.
 2. Download the latest `pumpkin_duels.wasm` binary from the GitHub Releases page under the `dev` tag.
 3. Place `pumpkin_duels.wasm` inside the `plugins/` directory of your Pumpkin server.
-4. Start the server. The plugin will generate its configuration and database files inside `plugins/pumpkin-duels/`.
+4. Start the server. The plugin will generate configuration and database files inside `plugins/pumpkin-duels/`.
 
 ## Quick Setup
 
