@@ -5,6 +5,7 @@ pub mod listeners;
 pub mod messages;
 pub mod minimessage;
 pub mod service;
+pub mod ui;
 
 use pumpkin_plugin_api::scheduler::SchedulerExt;
 use pumpkin_plugin_api::{

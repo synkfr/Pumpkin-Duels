@@ -1,20 +1,23 @@
 use crate::get_service;
+use crate::ui::PendingBedrockForm;
 use duels_core::match_state::MatchPhase;
 use duels_gui::ClickContext;
-use pumpkin_plugin_api::common::Position;
 use pumpkin_plugin_api::events::block::{BlockBreakEvent, BlockPlaceEvent};
-use pumpkin_plugin_api::events::entity::PlayerDeathEvent;
+use pumpkin_plugin_api::events::dialog::DialogClickActionEvent;
+use pumpkin_plugin_api::events::entity::{EntityDamageEvent, PlayerDeathEvent};
 use pumpkin_plugin_api::events::player::{
-    InventoryClickEvent, InventoryCloseEvent, PlayerDropItemEvent, PlayerLeaveEvent,
-    PlayerMoveEvent, PlayerRespawnEvent,
+    BedrockFormResponseEvent, InventoryClickEvent, InventoryCloseEvent, PlayerDropItemEvent,
+    PlayerInteractEvent, PlayerLeaveEvent, PlayerMoveEvent, PlayerRespawnEvent,
 };
 use pumpkin_plugin_api::events::{EventHandler, EventPriority};
 use pumpkin_plugin_api::events_wit::{
-    BlockBreakEventData, BlockPlaceEventData, InventoryClickEventData, InventoryCloseEventData,
-    PlayerDeathEventData, PlayerDropItemEventData, PlayerLeaveEventData, PlayerMoveEventData,
-    PlayerRespawnEventData,
+    BedrockFormResponseEventData, BlockBreakEventData, BlockPlaceEventData,
+    DialogClickActionEventData, EntityDamageEventData, InventoryClickEventData,
+    InventoryCloseEventData, PlayerDeathEventData, PlayerDropItemEventData,
+    PlayerInteractEventData, PlayerLeaveEventData, PlayerMoveEventData, PlayerRespawnEventData,
 };
-use pumpkin_plugin_api::{Context, Server};
+use pumpkin_plugin_api::forms::FormResponse;
+use pumpkin_plugin_api::{Context, ItemStackExt, Server};
 
 struct InventoryClickListener;
 
@@ -62,22 +65,14 @@ impl EventHandler<InventoryCloseEvent> for InventoryCloseListener {
 struct PlayerMoveListener;
 
 impl EventHandler<PlayerMoveEvent> for PlayerMoveListener {
-    fn handle(&self, server: Server, mut event: PlayerMoveEventData) -> PlayerMoveEventData {
+    fn handle(&self, server: Server, event: PlayerMoveEventData) -> PlayerMoveEventData {
         let player_uuid = event.player.get_id().to_string();
         let service = get_service();
 
         if let Some(session) = service.get_match_by_player(&player_uuid) {
             match session.phase {
                 MatchPhase::Countdown { .. } => {
-                    let is_p1 = session.player1_uuid == player_uuid;
-                    let spawn = if is_p1 {
-                        &session.arena.spawn1
-                    } else {
-                        &session.arena.spawn2
-                    };
-
-                    let spawn_pos: Position = (spawn.x, spawn.y, spawn.z);
-                    event.to_position = spawn_pos;
+                    // Handled natively by player.set_movement_locked(true)
                 }
                 MatchPhase::Fighting { .. } => {
                     let to_y = event.to_position.1;
@@ -216,6 +211,174 @@ impl EventHandler<PlayerRespawnEvent> for PlayerRespawnListener {
     }
 }
 
+struct DialogClickActionListener;
+
+impl EventHandler<DialogClickActionEvent> for DialogClickActionListener {
+    fn handle(&self, server: Server, event: DialogClickActionEventData) -> DialogClickActionEventData {
+        let player = &event.player;
+        let id = &event.id;
+        let service = get_service();
+
+        if let Some(challenger) = id.strip_prefix("duel:accept:") {
+            let _ = service.accept_challenge(player, Some(challenger), &server);
+        } else if let Some(challenger) = id.strip_prefix("duel:decline:") {
+            let _ = service.decline_challenge(player, Some(challenger), &server);
+        } else if id == "duel:surrender:confirm" {
+            let _ = service.surrender_match(player, &server);
+        } else if id == "duel:surrender:cancel" {
+            let msg = service.messages.component_raw("<color:#A0A0A0>Surrender cancelled.</color>");
+            player.send_system_message(msg, true);
+        } else if let Some(kit_name) = id.strip_prefix("duel:queue:") {
+            let _ = service.enqueue(player, kit_name, false, &server);
+        }
+
+        event
+    }
+}
+
+struct BedrockFormResponseListener;
+
+impl EventHandler<BedrockFormResponseEvent> for BedrockFormResponseListener {
+    fn handle(&self, server: Server, event: BedrockFormResponseEventData) -> BedrockFormResponseEventData {
+        let player = &event.player;
+        let p_uuid = player.get_id().to_string();
+        let service = get_service();
+
+        if let Some(pending) = crate::ui::take_bedrock_form(&p_uuid, event.form_id) {
+            let response = FormResponse::parse(event.response_data.clone());
+            match pending {
+                PendingBedrockForm::Challenge { challenger_name } => {
+                    match response {
+                        FormResponse::Modal(true) => {
+                            let _ = service.accept_challenge(player, Some(&challenger_name), &server);
+                        }
+                        FormResponse::Modal(false) => {
+                            let _ = service.decline_challenge(player, Some(&challenger_name), &server);
+                        }
+                        _ => {}
+                    }
+                }
+                PendingBedrockForm::Surrender => {
+                    if let FormResponse::Modal(true) = response {
+                        let _ = service.surrender_match(player, &server);
+                    }
+                }
+                PendingBedrockForm::KitSelect { kits, target_player } => {
+                    if let FormResponse::Simple(idx) = response {
+                        if (idx as usize) < kits.len() {
+                            let kit_name = &kits[idx as usize];
+                            if let Some(target) = target_player {
+                                if let Some(target_p) = server.get_player_by_name(&target) {
+                                    let _ = service.send_challenge(player, &target_p, kit_name);
+                                }
+                            } else {
+                                let _ = service.enqueue(player, kit_name, false, &server);
+                            }
+                        }
+                    }
+                }
+                PendingBedrockForm::MatchResult { kit_name } => {
+                    if let FormResponse::Simple(0) = response {
+                        let _ = service.enqueue(player, &kit_name, false, &server);
+                    }
+                }
+            }
+        }
+
+        event
+    }
+}
+
+struct EntityDamageListener;
+
+impl EventHandler<EntityDamageEvent> for EntityDamageListener {
+    fn handle(&self, server: Server, mut event: EntityDamageEventData) -> EntityDamageEventData {
+        let service = get_service();
+        let entity_id = event.entity_id as u32;
+
+        let active_match = {
+            let matches = service.active_matches.lock().unwrap();
+            matches.values().find_map(|session| {
+                let p1 = server.get_player_by_name(&session.player1_name)?;
+                let p2 = server.get_player_by_name(&session.player2_name)?;
+                if p1.as_entity().get_id() == entity_id {
+                    Some((session.clone(), p1, p2, false))
+                } else if p2.as_entity().get_id() == entity_id {
+                    Some((session.clone(), p2, p1, true))
+                } else {
+                    None
+                }
+            })
+        };
+
+        if let Some((session, victim, attacker, _)) = active_match {
+            match session.phase {
+                MatchPhase::Countdown { .. } | MatchPhase::Ended { .. } => {
+                    event.cancelled = true;
+                }
+                MatchPhase::Fighting { .. } => {
+                    let new_hp = (victim.get_health() - event.damage).max(0.0);
+                    let victim_name = victim.get_name();
+                    let attacker_name = attacker.get_name();
+
+                    let hud_attacker = service.messages.component_raw(&format!(
+                        "<color:#FF5555>Opponent: <color:#FFFFFF>{}</color> | HP: <color:#00E262>{:.1} ❤</color></color>",
+                        victim_name, new_hp
+                    ));
+                    attacker.show_actionbar(hud_attacker);
+
+                    let hud_victim = service.messages.component_raw(&format!(
+                        "<color:#FF5555>Opponent: <color:#FFFFFF>{}</color> | HP: <color:#00E262>{:.1} ❤</color></color>",
+                        attacker_name, attacker.get_health()
+                    ));
+                    victim.show_actionbar(hud_victim);
+
+                    let (vx, vy, vz) = victim.get_position();
+                    victim.spawn_particles(
+                        pumpkin_plugin_api::particles::Particle::DamageIndicator,
+                        (vx, vy + 1.0, vz),
+                        3,
+                        (0.3, 0.3, 0.3),
+                        0.1,
+                    );
+                    victim.spawn_particles(
+                        pumpkin_plugin_api::particles::Particle::Crit,
+                        (vx, vy + 1.0, vz),
+                        4,
+                        (0.3, 0.3, 0.3),
+                        0.1,
+                    );
+                }
+            }
+        }
+
+        event
+    }
+}
+
+struct PlayerInteractListener;
+
+impl EventHandler<PlayerInteractEvent> for PlayerInteractListener {
+    fn handle(&self, _server: Server, event: PlayerInteractEventData) -> PlayerInteractEventData {
+        let player = &event.player;
+        let player_uuid = player.get_id().to_string();
+        let service = get_service();
+
+        if !service.is_in_match(&player_uuid) && event.block == "minecraft:air" {
+            let inv = player.get_inventory().as_inventory();
+            if let Some(item) = inv.get_item(0) {
+                if let Some(it) = item.get_item() {
+                    if it.as_str().ends_with("_sword") {
+                        let _ = service.open_kit_selector(player, None);
+                    }
+                }
+            }
+        }
+
+        event
+    }
+}
+
 pub fn register_listeners(context: &Context) -> Result<(), String> {
     context.register_event_handler(
         InventoryClickListener,
@@ -267,6 +430,30 @@ pub fn register_listeners(context: &Context) -> Result<(), String> {
 
     context.register_event_handler(
         PlayerLeaveListener,
+        EventPriority::Normal,
+        false,
+    )?;
+
+    context.register_event_handler(
+        DialogClickActionListener,
+        EventPriority::High,
+        true,
+    )?;
+
+    context.register_event_handler(
+        BedrockFormResponseListener,
+        EventPriority::High,
+        true,
+    )?;
+
+    context.register_event_handler(
+        EntityDamageListener,
+        EventPriority::High,
+        true,
+    )?;
+
+    context.register_event_handler(
+        PlayerInteractListener,
         EventPriority::Normal,
         false,
     )?;

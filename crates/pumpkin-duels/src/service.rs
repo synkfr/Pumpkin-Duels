@@ -192,6 +192,8 @@ impl DuelsService {
         );
         play_duel_received(target);
 
+        crate::ui::show_challenge_ui(target, challenger, kit_name, "Classic");
+
         Ok(())
     }
 
@@ -438,6 +440,9 @@ impl DuelsService {
             });
         teleport_player(p2, &arena_instance.spawn2, duel_world2);
 
+        p1.set_movement_locked(true);
+        p2.set_movement_locked(true);
+
         {
             let mut matches = self.active_matches.lock().unwrap();
             matches.insert(match_id.clone(), session);
@@ -478,10 +483,12 @@ impl DuelsService {
                             session.phase = MatchPhase::Fighting { elapsed_seconds: 0 };
                             let start_comp = self.messages.component(&self.messages.get_config().match_start, &[]);
                             if let Some(p1) = server.get_player_by_name(&session.player1_name) {
+                                p1.set_movement_locked(false);
                                 p1.show_title(start_comp);
                                 play_match_start(&p1);
                             }
                             if let Some(p2) = server.get_player_by_name(&session.player2_name) {
+                                p2.set_movement_locked(false);
                                 p2.show_title(self.messages.component(&self.messages.get_config().match_start, &[]));
                                 play_match_start(&p2);
                             }
@@ -581,15 +588,43 @@ impl DuelsService {
             let bcast_msg = self.messages.get_config().match_broadcast_win;
 
             if let Some(w_player) = server.get_player_by_name(&winner_name) {
+                w_player.set_movement_locked(false);
                 w_player.show_title(self.messages.component(&win_msg, &[("{loser}", &loser_name)]));
+
+                let (wx, wy, wz) = w_player.get_position();
+                w_player.spawn_particles(
+                    pumpkin_plugin_api::particles::Particle::TotemOfUndying,
+                    (wx, wy + 1.0, wz),
+                    25,
+                    (0.5, 0.5, 0.5),
+                    0.1,
+                );
+                w_player.spawn_particles(
+                    pumpkin_plugin_api::particles::Particle::CherryLeaves,
+                    (wx, wy + 1.5, wz),
+                    20,
+                    (0.5, 0.5, 0.5),
+                    0.1,
+                );
+                w_player.spawn_particles(
+                    pumpkin_plugin_api::particles::Particle::Firework,
+                    (wx, wy + 2.0, wz),
+                    15,
+                    (0.5, 0.5, 0.5),
+                    0.1,
+                );
+
                 self.teleport_lobby(&w_player, server);
                 play_victory(&w_player);
+                crate::ui::show_match_results_ui(&w_player, &winner_name, true, 20, &session.kit.name);
             }
 
             if let Some(l_player) = server.get_player_by_name(&loser_name) {
+                l_player.set_movement_locked(false);
                 l_player.show_title(self.messages.component(&lose_msg, &[("{winner}", &winner_name)]));
                 self.teleport_lobby(&l_player, server);
                 play_defeat(&l_player);
+                crate::ui::show_match_results_ui(&l_player, &winner_name, false, -20, &session.kit.name);
             }
 
             let bcast_formatted = self.messages.format(
@@ -635,6 +670,11 @@ impl DuelsService {
         target_name: Option<String>,
     ) -> Result<(), String> {
         let kits = self.storage.list_kits().map_err(|e| e.to_string())?;
+
+        if crate::ui::open_bedrock_kit_selector(player, &kits, target_name.clone()) {
+            return Ok(());
+        }
+
         let mut builder = GuiBuilder::new(Screen::Generic9x3, "Select Kit");
 
         let border_item = ItemDescriptor::new("minecraft:gray_stained_glass_pane", 1).with_name(" ");

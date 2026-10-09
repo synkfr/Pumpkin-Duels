@@ -455,6 +455,40 @@ impl CommandHandler for SurrenderHandler {
             }
         };
 
+        if !service.is_in_match(&player.get_id().to_string()) {
+            send_feedback_error(
+                &sender,
+                &server,
+                service.messages.component_raw("<color:#E20000>You are not currently in an active match.</color>"),
+            );
+            return Ok(0);
+        }
+
+        crate::ui::show_surrender_confirmation(&player);
+        let prompt_msg = "<color:#E2B700>Please confirm forfeit in the dialog or run </color><color:#00E262>/surrender confirm</color>";
+        player.send_system_message(service.messages.component_raw(prompt_msg), false);
+        Ok(0)
+    }
+}
+
+struct SurrenderConfirmHandler;
+impl CommandHandler for SurrenderConfirmHandler {
+    fn handle(
+        &self,
+        sender: CommandSender,
+        server: Server,
+        _args: ConsumedArgs,
+    ) -> Result<i32, CommandError> {
+        let service = get_service();
+        let player = match server.get_player_by_name(&sender.get_name()) {
+            Some(p) => p,
+            None => {
+                let msg = service.messages.get_config().only_players;
+                send_feedback_error(&sender, &server, service.messages.component(&msg, &[]));
+                return Ok(0);
+            }
+        };
+
         if let Err(err_msg) = service.surrender_match(&player, &server) {
             send_feedback_error(&sender, &server, service.messages.component_raw(&err_msg));
         }
@@ -1749,7 +1783,9 @@ pub fn register_commands(context: &Context) {
 
     // 4. In-match commands: /surrender (ff, forfeit) and /ping (ms)
     let surrender_aliases = ["surrender".to_string(), "ff".to_string(), "forfeit".to_string()];
-    let surrender_cmd = Command::new(&surrender_aliases, "Surrender current match").execute(SurrenderHandler);
+    let surrender_cmd = Command::new(&surrender_aliases, "Surrender current match")
+        .execute(SurrenderHandler)
+        .then(CommandNode::literal("confirm").execute(SurrenderConfirmHandler));
     context.register_command(surrender_cmd, PERM_USER);
 
     let ping_aliases = ["ping".to_string(), "ms".to_string()];
