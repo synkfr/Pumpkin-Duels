@@ -262,17 +262,84 @@ pub fn open_bedrock_kit_selector(
 }
 
 use pumpkin_plugin_api::wit::pumpkin::plugin::scoreboard::{
-    BedrockDisplaySlot, BedrockSortOrder, DisplaySlot, RenderType,
+    BedrockDisplaySlot, BedrockSortOrder, DisplaySlot, NumberFormat, RenderType,
 };
+use pumpkin_plugin_api::wit::pumpkin::plugin::status_effect::StatusEffectType;
 use pumpkin_plugin_api::World;
 
 pub const OBJECTIVE_HEALTH: &str = "duel_health";
 
+pub fn get_combat_heart_color(player: &Player) -> &'static str {
+    // 1. Freezing ticks (powder snow freeze)
+    if player.get_freeze_ticks() >= 140 {
+        return "#3BE3FF";
+    }
+    // 2. Wither effect
+    if player.has_effect(StatusEffectType::Wither) {
+        return "#303030";
+    }
+    // 3. Poison effect
+    if player.has_effect(StatusEffectType::Poison) {
+        return "#2DAD48";
+    }
+    // 4. Absorption (golden apple, absorption effect, or health > normal 20.0)
+    if player.get_absorption() > 0.0
+        || player.has_effect(StatusEffectType::Absorption)
+        || player.get_health() > 20.0
+    {
+        return "#FFEE2E";
+    }
+    // 5. Default healthy/damaged red
+    "#FF5555"
+}
+
+pub fn get_combat_heart_value(player: &Player, hp: f32) -> (String, i32) {
+    let base_hp = hp.max(0.0);
+    let absorption_hp = player.get_absorption().max(0.0);
+    let total_hp = base_hp + absorption_hp;
+    let hearts = total_hp / 2.0;
+    let rounded_half_hearts = (hearts * 2.0).round() / 2.0;
+
+    let heart_str = if rounded_half_hearts.fract().abs() < 1e-4 {
+        format!("{:.0}", rounded_half_hearts)
+    } else {
+        format!("{:.1}", rounded_half_hearts)
+    };
+
+    let score_val = (rounded_half_hearts * 2.0).round() as i32;
+    (heart_str, score_val)
+}
+
+fn format_nametag(template: &str, display_name: &str, heart_str: &str, color: &str) -> String {
+    template
+        .replace("{display_name}", display_name)
+        .replace("{name}", display_name)
+        .replace("{heart}", heart_str)
+        .replace("{color}", color)
+}
+
+fn format_belowname(template: &str, heart_str: &str, color: &str, display_name: &str) -> String {
+    template
+        .replace("{heart}", heart_str)
+        .replace("{color}", color)
+        .replace("{display_name}", display_name)
+        .replace("{name}", display_name)
+}
+
 pub fn init_combat_nametag_and_belowname(p1: &Player, p2: &Player, world: &World) {
     let p1_name = p1.get_name();
     let p2_name = p2.get_name();
-    let p1_hp = (p1.get_health().max(0.0).ceil() as i32).max(1);
-    let p2_hp = (p2.get_health().max(0.0).ceil() as i32).max(1);
+
+    let service = crate::get_service();
+    let msg_cfg = service.messages.get_config();
+
+    let (p1_heart_str, p1_score) = get_combat_heart_value(p1, p1.get_health());
+    let p1_color = get_combat_heart_color(p1);
+    let p1_below = format_belowname(&msg_cfg.combat_belowname, &p1_heart_str, p1_color, &p1_name);
+
+    let (p2_heart_str, p2_score) = get_combat_heart_value(p2, p2.get_health());
+    let p2_color = get_combat_heart_color(p2);
+    let p2_below = format_belowname(&msg_cfg.combat_belowname, &p2_heart_str, p2_color, &p2_name);
 
     let world_sb = world.get_scoreboard();
     world_sb.remove_objective(OBJECTIVE_HEALTH);
@@ -283,11 +350,25 @@ pub fn init_combat_nametag_and_belowname(p1: &Player, p2: &Player, world: &World
         None,
     );
     world_sb.set_display_slot(DisplaySlot::BelowName, OBJECTIVE_HEALTH);
-    world_sb.update_score(&p1_name, OBJECTIVE_HEALTH, p1_hp, None);
-    world_sb.update_score(&p2_name, OBJECTIVE_HEALTH, p2_hp, None);
+    world_sb.update_score(
+        &p1_name,
+        OBJECTIVE_HEALTH,
+        p1_score,
+        Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(&p1_below))),
+    );
+    world_sb.update_score(
+        &p2_name,
+        OBJECTIVE_HEALTH,
+        p2_score,
+        Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(&p2_below))),
+    );
 
-    setup_single_player_scoreboard(p1, &p1_name, p1_hp, &p2_name, p2_hp);
-    setup_single_player_scoreboard(p2, &p2_name, p2_hp, &p1_name, p1_hp);
+    setup_single_player_scoreboard(
+        p1, &p1_name, p1_score, &p1_below, &p2_name, p2_score, &p2_below,
+    );
+    setup_single_player_scoreboard(
+        p2, &p2_name, p2_score, &p2_below, &p1_name, p1_score, &p1_below,
+    );
 
     update_player_nametag(p1, p1.get_health());
     update_player_nametag(p2, p2.get_health());
@@ -296,9 +377,11 @@ pub fn init_combat_nametag_and_belowname(p1: &Player, p2: &Player, world: &World
 fn setup_single_player_scoreboard(
     player: &Player,
     p1_name: &str,
-    p1_hp: i32,
+    p1_score: i32,
+    p1_below: &str,
     p2_name: &str,
-    p2_hp: i32,
+    p2_score: i32,
+    p2_below: &str,
 ) {
     if let Some(java) = player.as_java() {
         let sb = java.get_scoreboard();
@@ -310,16 +393,26 @@ fn setup_single_player_scoreboard(
             None,
         );
         sb.set_display_slot(DisplaySlot::BelowName, OBJECTIVE_HEALTH);
-        sb.update_score(p1_name, OBJECTIVE_HEALTH, p1_hp, None);
-        sb.update_score(p2_name, OBJECTIVE_HEALTH, p2_hp, None);
+        sb.update_score(
+            p1_name,
+            OBJECTIVE_HEALTH,
+            p1_score,
+            Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(p1_below))),
+        );
+        sb.update_score(
+            p2_name,
+            OBJECTIVE_HEALTH,
+            p2_score,
+            Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(p2_below))),
+        );
     }
     if let Some(bedrock) = player.as_bedrock() {
         let bsb = bedrock.get_scoreboard();
         bsb.remove_objective(OBJECTIVE_HEALTH);
         bsb.add_objective(OBJECTIVE_HEALTH, "§c❤", BedrockSortOrder::Descending);
         bsb.set_display_slot(BedrockDisplaySlot::BelowName, OBJECTIVE_HEALTH);
-        bsb.update_score(p1_name, OBJECTIVE_HEALTH, p1_hp);
-        bsb.update_score(p2_name, OBJECTIVE_HEALTH, p2_hp);
+        bsb.update_score(p1_name, OBJECTIVE_HEALTH, p1_score);
+        bsb.update_score(p2_name, OBJECTIVE_HEALTH, p2_score);
     }
 }
 
@@ -330,34 +423,68 @@ pub fn update_combat_health(
     world: &World,
 ) {
     let name = target.get_name();
-    let hp_int = (hp.max(0.0).ceil() as i32).max(0);
+    let service = crate::get_service();
+    let msg_cfg = service.messages.get_config();
 
-    update_player_nametag(target, hp);
+    let (heart_str, score_val) = get_combat_heart_value(target, hp);
+    let color = get_combat_heart_color(target);
 
+    // Update target's overhead nametag
+    let tag_text = format_nametag(&msg_cfg.combat_nametag, &name, &heart_str, color);
+    let comp = crate::minimessage::parse_minimessage(&tag_text);
+    target.as_entity().set_custom_name(comp);
+    target.as_entity().set_custom_name_visible(true);
+
+    // Format below-name string
+    let below_text = format_belowname(&msg_cfg.combat_belowname, &heart_str, color, &name);
+
+    // Update world scoreboard below-name value
     let world_sb = world.get_scoreboard();
-    world_sb.update_score(&name, OBJECTIVE_HEALTH, hp_int, None);
+    world_sb.update_score(
+        &name,
+        OBJECTIVE_HEALTH,
+        score_val,
+        Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(&below_text))),
+    );
 
+    // Update target's personal scoreboard
     if let Some(java) = target.as_java() {
-        java.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int, None);
+        java.get_scoreboard().update_score(
+            &name,
+            OBJECTIVE_HEALTH,
+            score_val,
+            Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(&below_text))),
+        );
     }
     if let Some(bedrock) = target.as_bedrock() {
-        bedrock.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int);
+        bedrock.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, score_val);
     }
 
+    // Update opponent's personal scoreboard so below-name displays the new value
     if let Some(opp) = opponent {
         if let Some(java) = opp.as_java() {
-            java.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int, None);
+            java.get_scoreboard().update_score(
+                &name,
+                OBJECTIVE_HEALTH,
+                score_val,
+                Some(NumberFormat::Fixed(crate::minimessage::parse_minimessage(&below_text))),
+            );
         }
         if let Some(bedrock) = opp.as_bedrock() {
-            bedrock.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int);
+            bedrock.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, score_val);
         }
     }
 }
 
 pub fn update_player_nametag(player: &Player, hp: f32) {
     let name = player.get_name();
-    let hp_int = (hp.max(0.0).ceil() as i32).max(0);
-    let tag_text = format!("<color:#FFFFFF>{}</color> <color:#FF5555>{} ❤</color>", name, hp_int);
+    let service = crate::get_service();
+    let msg_cfg = service.messages.get_config();
+
+    let (heart_str, _) = get_combat_heart_value(player, hp);
+    let color = get_combat_heart_color(player);
+
+    let tag_text = format_nametag(&msg_cfg.combat_nametag, &name, &heart_str, color);
     let comp = crate::minimessage::parse_minimessage(&tag_text);
     player.as_entity().set_custom_name(comp);
     player.as_entity().set_custom_name_visible(true);

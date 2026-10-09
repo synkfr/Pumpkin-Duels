@@ -55,6 +55,8 @@ pub struct MessagesConfig {
     pub ping_self: String,
     pub ping_other: String,
     pub version_info: String,
+    pub combat_nametag: String,
+    pub combat_belowname: String,
 }
 
 impl Default for MessagesConfig {
@@ -109,6 +111,8 @@ impl Default for MessagesConfig {
             ping_self: "<color:#A0A0A0>Your ping:</color> <color:#00E262>{ping}ms</color>".to_string(),
             ping_other: "<color:#E2B700>{player}'s</color> <color:#A0A0A0>ping:</color> <color:#00E262>{ping}ms</color>".to_string(),
             version_info: "<color:#E2B700>Pumpkin-Duels</color> <color:#00E262>v0.1.0</color> <color:#A0A0A0>built for Pumpkin 0.2.0 (Protocol 777)</color>".to_string(),
+            combat_nametag: "<color:#A0A0A0>{display_name}</color>".to_string(),
+            combat_belowname: "<color:{color}>{heart} ❤</color>".to_string(),
         }
     }
 }

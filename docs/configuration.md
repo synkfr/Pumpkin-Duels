@@ -107,7 +107,22 @@ match_start = "<color:#00E262><bold>FIGHT!</bold></color>"
 match_won = "<color:#00E262><bold>VICTORY!</bold></color> <color:#A0A0A0>You defeated <color:#E2B700>{loser}</color>!</color>"
 match_lost = "<color:#E20000><bold>DEFEAT!</bold></color> <color:#A0A0A0>You were defeated by <color:#E2B700>{winner}</color>!</color>"
 match_broadcast_win = "<color:#00E262>{winner}</color> <color:#A0A0A0>defeated</color> <color:#E20000>{loser}</color> <color:#A0A0A0>in</color> <color:#E2B700>{arena}</color> <color:#555555>({kit})</color>"
+combat_nametag = "<color:#A0A0A0>{display_name}</color> <color:{color}>{heart} HP</color>"
+combat_belowname = "<color:{color}>{heart} HP</color>"
 ```
+
+### Combat Display Placeholders
+
+During active matches, player nametags and below-name scoreboards support dynamic formatting:
+
+- `{display_name}`: Target player username or custom display name.
+- `{heart}`: Exact heart count, displayed as integers for full hearts (e.g. `10`, `9`) or decimals for half-hearts (e.g. `9.5`, `8.5`).
+- `{color}`: Dynamic hex color code automatically reflecting active player status effects:
+  - Absorption (Golden Apple or extra health above 20 HP): `#FFEE2E`
+  - Wither Effect: `#303030`
+  - Poison Effect: `#2DAD48`
+  - Freezing (Powder Snow): `#3BE3FF`
+  - Normal / Healthy: `#FF5555`
 
 ### Template Placeholders
 

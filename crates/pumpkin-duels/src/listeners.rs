@@ -7,14 +7,16 @@ use pumpkin_plugin_api::events::dialog::DialogClickActionEvent;
 use pumpkin_plugin_api::events::entity::{EntityDamageEvent, PlayerDeathEvent};
 use pumpkin_plugin_api::events::player::{
     BedrockFormResponseEvent, InventoryClickEvent, InventoryCloseEvent, PlayerDropItemEvent,
-    PlayerInteractEvent, PlayerLeaveEvent, PlayerMoveEvent, PlayerRespawnEvent,
+    PlayerInteractEvent, PlayerItemConsumeEvent, PlayerLeaveEvent, PlayerMoveEvent,
+    PlayerRespawnEvent,
 };
 use pumpkin_plugin_api::events::{EventHandler, EventPriority};
 use pumpkin_plugin_api::events_wit::{
     BedrockFormResponseEventData, BlockBreakEventData, BlockPlaceEventData,
     DialogClickActionEventData, EntityDamageEventData, InventoryClickEventData,
     InventoryCloseEventData, PlayerDeathEventData, PlayerDropItemEventData,
-    PlayerInteractEventData, PlayerLeaveEventData, PlayerMoveEventData, PlayerRespawnEventData,
+    PlayerInteractEventData, PlayerItemConsumeEventData, PlayerLeaveEventData, PlayerMoveEventData,
+    PlayerRespawnEventData,
 };
 use pumpkin_plugin_api::forms::FormResponse;
 use pumpkin_plugin_api::{Context, ItemStackExt, Server};
@@ -447,5 +449,35 @@ pub fn register_listeners(context: &Context) -> Result<(), String> {
         false,
     )?;
 
+    context.register_event_handler(
+        PlayerItemConsumeListener,
+        EventPriority::Normal,
+        false,
+    )?;
+
     Ok(())
+}
+
+struct PlayerItemConsumeListener;
+
+impl EventHandler<PlayerItemConsumeEvent> for PlayerItemConsumeListener {
+    fn handle(&self, server: Server, event: PlayerItemConsumeEventData) -> PlayerItemConsumeEventData {
+        let p_uuid = event.player.get_id().to_string();
+        let service = get_service();
+        if let Some(session) = service.get_match_by_player(&p_uuid) {
+            let opp_name = if session.player1_uuid == p_uuid {
+                &session.player2_name
+            } else {
+                &session.player1_name
+            };
+            let opp = server.get_player_by_name(opp_name);
+            crate::ui::update_combat_health(
+                &event.player,
+                event.player.get_health(),
+                opp.as_ref(),
+                &event.player.get_world(),
+            );
+        }
+        event
+    }
 }

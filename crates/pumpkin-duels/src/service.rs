@@ -501,19 +501,24 @@ impl DuelsService {
                     MatchPhase::Fighting { elapsed_seconds } => {
                         *elapsed_seconds += 1;
 
-                        if let Some(p1) = server.get_player_by_name(&session.player1_name) {
+                        let p1_opt = server.get_player_by_name(&session.player1_name);
+                        let p2_opt = server.get_player_by_name(&session.player2_name);
+
+                        if let Some(ref p1) = p1_opt {
                             let pos = p1.get_position();
                             if session.arena.bounds.is_ringout(pos.1) {
                                 matches_to_end.push((id.clone(), session.player2_uuid.clone()));
                                 continue;
                             }
+                            crate::ui::update_combat_health(p1, p1.get_health(), p2_opt.as_ref(), &p1.get_world());
                         }
-                        if let Some(p2) = server.get_player_by_name(&session.player2_name) {
+                        if let Some(ref p2) = p2_opt {
                             let pos = p2.get_position();
                             if session.arena.bounds.is_ringout(pos.1) {
                                 matches_to_end.push((id.clone(), session.player1_uuid.clone()));
                                 continue;
                             }
+                            crate::ui::update_combat_health(p2, p2.get_health(), p1_opt.as_ref(), &p2.get_world());
                         }
                     }
                     MatchPhase::Ended { .. } => {}
