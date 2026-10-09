@@ -1,0 +1,30 @@
+# Rust and Cargo build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Compiled WebAssembly binaries
+*.wasm
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+pumpkin-duels.db
+
+# Node and VitePress build outputs
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# Editor and IDE configurations
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Internal instruction files
+INSTRUCTIONS.md

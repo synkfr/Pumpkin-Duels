@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/duels-config",
+    "crates/duels-storage",
+    "crates/duels-gui",
+    "crates/duels-core",
+    "crates/pumpkin-duels",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+pumpkin-plugin-api = "0.2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+toml_edit = "0.22"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tracing = "0.1"
+uuid = { version = "1.10", features = ["v4"] }
+thiserror = "2.0"
+duels-config = { path = "crates/duels-config" }
+duels-storage = { path = "crates/duels-storage" }
+duels-gui = { path = "crates/duels-gui" }
+duels-core = { path = "crates/duels-core" }
