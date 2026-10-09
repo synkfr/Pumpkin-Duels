@@ -75,13 +75,13 @@ The primary plugin crate compiling to a CDYLIB WebAssembly module:
 - **Event Listeners (`listeners.rs`)**:
   - `DialogClickActionEvent`: Intercepts client dialog button actions (`duel:accept:<player>`, `duel:surrender:confirm`, `duel:queue:<kit>`).
   - `BedrockFormResponseEvent`: Intercepts Bedrock form submissions and kit selections.
-  - `EntityDamageEvent`: Cancels pre-match damage, updates live Action Bar combat HUD meters, and spawns hit particles.
+  - `EntityDamageEvent`: Cancels pre-match damage, updates live nametag and below-name scoreboard health values, and spawns hit particles.
   - `PlayerDeathEvent`: Concludes matches, updates ELO, and restores inventories without item loss.
   - `PlayerMoveEvent`: Detects boundary ringouts while camera stays smooth under native `set_movement_locked(true)`.
   - `PlayerInteractEvent`: Intercepts lobby sword right-clicks to open kit selectors.
   - `BlockBreakEvent` / `BlockPlaceEvent`: Enforces kit building restrictions (`allow_build = false`).
 - **Dynamic Instancing**: Duplicates template world directories into `duel_<match_id>` instances and completely removes temporary directories upon match conclusion.
-- **Immersion**: Controls movement locking during countdowns, Action Bar combat HUDs, and celebratory victory particle emitters.
+- **Immersion**: Controls movement locking during countdowns, real-time nametag and below-name scoreboard health feedback, and celebratory victory particle emitters.
 
 ---
 

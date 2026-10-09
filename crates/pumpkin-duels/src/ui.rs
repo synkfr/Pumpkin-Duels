@@ -260,3 +260,125 @@ pub fn open_bedrock_kit_selector(
         false
     }
 }
+
+use pumpkin_plugin_api::wit::pumpkin::plugin::scoreboard::{
+    BedrockDisplaySlot, BedrockSortOrder, DisplaySlot, RenderType,
+};
+use pumpkin_plugin_api::World;
+
+pub const OBJECTIVE_HEALTH: &str = "duel_health";
+
+pub fn init_combat_nametag_and_belowname(p1: &Player, p2: &Player, world: &World) {
+    let p1_name = p1.get_name();
+    let p2_name = p2.get_name();
+    let p1_hp = (p1.get_health().max(0.0).ceil() as i32).max(1);
+    let p2_hp = (p2.get_health().max(0.0).ceil() as i32).max(1);
+
+    let world_sb = world.get_scoreboard();
+    world_sb.remove_objective(OBJECTIVE_HEALTH);
+    world_sb.add_objective(
+        OBJECTIVE_HEALTH,
+        crate::minimessage::parse_minimessage("<color:#FF5555>❤</color>"),
+        RenderType::Hearts,
+        None,
+    );
+    world_sb.set_display_slot(DisplaySlot::BelowName, OBJECTIVE_HEALTH);
+    world_sb.update_score(&p1_name, OBJECTIVE_HEALTH, p1_hp, None);
+    world_sb.update_score(&p2_name, OBJECTIVE_HEALTH, p2_hp, None);
+
+    setup_single_player_scoreboard(p1, &p1_name, p1_hp, &p2_name, p2_hp);
+    setup_single_player_scoreboard(p2, &p2_name, p2_hp, &p1_name, p1_hp);
+
+    update_player_nametag(p1, p1.get_health());
+    update_player_nametag(p2, p2.get_health());
+}
+
+fn setup_single_player_scoreboard(
+    player: &Player,
+    p1_name: &str,
+    p1_hp: i32,
+    p2_name: &str,
+    p2_hp: i32,
+) {
+    if let Some(java) = player.as_java() {
+        let sb = java.get_scoreboard();
+        sb.remove_objective(OBJECTIVE_HEALTH);
+        sb.add_objective(
+            OBJECTIVE_HEALTH,
+            crate::minimessage::parse_minimessage("<color:#FF5555>❤</color>"),
+            RenderType::Hearts,
+            None,
+        );
+        sb.set_display_slot(DisplaySlot::BelowName, OBJECTIVE_HEALTH);
+        sb.update_score(p1_name, OBJECTIVE_HEALTH, p1_hp, None);
+        sb.update_score(p2_name, OBJECTIVE_HEALTH, p2_hp, None);
+    }
+    if let Some(bedrock) = player.as_bedrock() {
+        let bsb = bedrock.get_scoreboard();
+        bsb.remove_objective(OBJECTIVE_HEALTH);
+        bsb.add_objective(OBJECTIVE_HEALTH, "§c❤", BedrockSortOrder::Descending);
+        bsb.set_display_slot(BedrockDisplaySlot::BelowName, OBJECTIVE_HEALTH);
+        bsb.update_score(p1_name, OBJECTIVE_HEALTH, p1_hp);
+        bsb.update_score(p2_name, OBJECTIVE_HEALTH, p2_hp);
+    }
+}
+
+pub fn update_combat_health(
+    target: &Player,
+    hp: f32,
+    opponent: Option<&Player>,
+    world: &World,
+) {
+    let name = target.get_name();
+    let hp_int = (hp.max(0.0).ceil() as i32).max(0);
+
+    update_player_nametag(target, hp);
+
+    let world_sb = world.get_scoreboard();
+    world_sb.update_score(&name, OBJECTIVE_HEALTH, hp_int, None);
+
+    if let Some(java) = target.as_java() {
+        java.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int, None);
+    }
+    if let Some(bedrock) = target.as_bedrock() {
+        bedrock.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int);
+    }
+
+    if let Some(opp) = opponent {
+        if let Some(java) = opp.as_java() {
+            java.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int, None);
+        }
+        if let Some(bedrock) = opp.as_bedrock() {
+            bedrock.get_scoreboard().update_score(&name, OBJECTIVE_HEALTH, hp_int);
+        }
+    }
+}
+
+pub fn update_player_nametag(player: &Player, hp: f32) {
+    let name = player.get_name();
+    let hp_int = (hp.max(0.0).ceil() as i32).max(0);
+    let tag_text = format!("<color:#FFFFFF>{}</color> <color:#FF5555>{} ❤</color>", name, hp_int);
+    let comp = crate::minimessage::parse_minimessage(&tag_text);
+    player.as_entity().set_custom_name(comp);
+    player.as_entity().set_custom_name_visible(true);
+}
+
+pub fn reset_combat_nametag_and_belowname(player: &Player) {
+    let name = player.get_name();
+    player.as_entity().set_custom_name(TextComponent::text(&name));
+    player.as_entity().set_custom_name_visible(false);
+
+    if let Some(java) = player.as_java() {
+        let sb = java.get_scoreboard();
+        sb.clear_display_slot(DisplaySlot::BelowName);
+        sb.remove_objective(OBJECTIVE_HEALTH);
+        java.reset_scoreboard();
+    }
+    if let Some(bedrock) = player.as_bedrock() {
+        let bsb = bedrock.get_scoreboard();
+        bsb.clear_display_slot(BedrockDisplaySlot::BelowName);
+        bsb.remove_objective(OBJECTIVE_HEALTH);
+        bedrock.reset_scoreboard();
+    }
+}
+

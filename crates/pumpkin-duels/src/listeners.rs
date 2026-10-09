@@ -318,20 +318,9 @@ impl EventHandler<EntityDamageEvent> for EntityDamageListener {
                 }
                 MatchPhase::Fighting { .. } => {
                     let new_hp = (victim.get_health() - event.damage).max(0.0);
-                    let victim_name = victim.get_name();
-                    let attacker_name = attacker.get_name();
-
-                    let hud_attacker = service.messages.component_raw(&format!(
-                        "<color:#FF5555>Opponent: <color:#FFFFFF>{}</color> | HP: <color:#00E262>{:.1} ❤</color></color>",
-                        victim_name, new_hp
-                    ));
-                    attacker.show_actionbar(hud_attacker);
-
-                    let hud_victim = service.messages.component_raw(&format!(
-                        "<color:#FF5555>Opponent: <color:#FFFFFF>{}</color> | HP: <color:#00E262>{:.1} ❤</color></color>",
-                        attacker_name, attacker.get_health()
-                    ));
-                    victim.show_actionbar(hud_victim);
+                    let world = victim.get_world();
+                    crate::ui::update_combat_health(&victim, new_hp, Some(&attacker), &world);
+                    crate::ui::update_combat_health(&attacker, attacker.get_health(), Some(&victim), &world);
 
                     let (vx, vy, vz) = victim.get_position();
                     victim.spawn_particles(

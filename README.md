@@ -18,7 +18,7 @@ Pumpkin-Duels is a high-performance 1v1 practice duel plugin built in Rust for t
 - **Cross-Platform UI Engine**: Native Java 1.21+ Dialog screens with interactive ActionButtons for Java players, and native Bedrock ModalForms / SimpleForms for Bedrock mobile and console players.
 - **Isolated World Instancing**: Duplicates arena template directories into isolated match instances (`worlds/duel_<match_id>`) for concurrent matches. Automatically purges temporary directories upon match conclusion to prevent world data accumulation.
 - **True Movement Freeze**: Employs native `player.set_movement_locked(true)` during the 5-second countdown. Allows players to rotate their cameras smoothly without coordinate jitter or teleport snapping.
-- **Action Bar Combat HUD**: Delivers real-time opponent health meters and combo counters (`Opponent: Player | HP: 14.5`) via `player.show_actionbar()`.
+- **Nametag and Below-Name Heart Feedback**: Dynamically displays real-time health and heart indicators directly on overhead player nametags and native below-name scoreboards across Java and Bedrock clients.
 - **Matchmaking and Direct Challenges**: Supports direct challenges with interactive dialogs and clickable chat buttons (`[ACCEPT]` and `[DECLINE]`), alongside automated kit queues.
 - **Chest GUI & Bedrock Kit Selectors**: Virtual chest inventory interface for Java players and native button menus for Bedrock players.
 - **In-Game Kit Management**: Capture your inventory loadouts into reusable kits with `/kit create <name>` and customize titles using MiniMessage with `/kit rename <name> <display>`.

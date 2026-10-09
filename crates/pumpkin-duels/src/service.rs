@@ -443,6 +443,8 @@ impl DuelsService {
         p1.set_movement_locked(true);
         p2.set_movement_locked(true);
 
+        crate::ui::init_combat_nametag_and_belowname(p1, p2, &p1.get_world());
+
         {
             let mut matches = self.active_matches.lock().unwrap();
             matches.insert(match_id.clone(), session);
@@ -486,11 +488,13 @@ impl DuelsService {
                                 p1.set_movement_locked(false);
                                 p1.show_title(start_comp);
                                 play_match_start(&p1);
+                                crate::ui::update_player_nametag(&p1, p1.get_health());
                             }
                             if let Some(p2) = server.get_player_by_name(&session.player2_name) {
                                 p2.set_movement_locked(false);
                                 p2.show_title(self.messages.component(&self.messages.get_config().match_start, &[]));
                                 play_match_start(&p2);
+                                crate::ui::update_player_nametag(&p2, p2.get_health());
                             }
                         }
                     }
@@ -640,11 +644,19 @@ impl DuelsService {
                 p.send_system_message(self.messages.component_raw(&bcast_formatted), false);
             }
 
+            if let Some(w) = server.get_world_by_name(&session.arena.world_name) {
+                let sb = w.get_scoreboard();
+                sb.clear_display_slot(pumpkin_plugin_api::wit::pumpkin::plugin::scoreboard::DisplaySlot::BelowName);
+                sb.remove_objective(crate::ui::OBJECTIVE_HEALTH);
+            }
+
             let _ = self.arena_manager.destroy_instance(server, &session.arena);
         }
     }
 
     pub fn teleport_lobby(&self, player: &Player, server: &Server) {
+        crate::ui::reset_combat_nametag_and_belowname(player);
+
         let cfg = self.config.get();
         let lobby_world = server
             .get_world_by_name(&cfg.lobby_world)

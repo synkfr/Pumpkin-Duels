@@ -23,7 +23,7 @@ features:
   - title: Matchmaking Queue and Direct Challenges
     details: Supports direct player challenges with interactive dialogs, clickable chat prompts, and automated queue matchmaking per kit.
   - title: Combat Immersion and True Freeze
-    details: Zero-jitter countdown freeze via native movement locks, real-time Action Bar combat HUD meters, and victory particle fanfare.
+    details: Zero-jitter countdown freeze via native movement locks, real-time nametag and below-name scoreboard health hearts, and victory particle fanfare.
   - title: Embedded SQLite Storage
     details: High-speed relational persistence for player statistics, ELO ratings, win streaks, kit contents, and arena metadata.
 ---
@@ -47,7 +47,7 @@ Pumpkin-Duels is a competitive 1v1 practice duels plugin developed in Rust for t
 
 - **Cross-Platform User Interface**: Tailored UI experiences for Java (dialogs and chest GUIs) and Bedrock (native form screens) without third-party proxy bridges.
 - **Match Flow Management**: Full state machine governing countdowns, match progression, damage calculation, victory determination, and player inventory restoration.
-- **Combat Feedback**: Real-time Action Bar opponent health tracking, combo counters, and victory particle celebrations.
+- **Combat Feedback**: Real-time nametag and below-name scoreboard health hearts, audio cues, and victory particle celebrations.
 - **Movement Physics**: Camera-smooth movement locks during countdowns without camera snapping or teleport spam.
 - **Arena Management**: In-game commands to create void template worlds, set exact player spawn points, spectator coordinates, and boundary limits.
 - **Kit Customization**: Snapshot player inventories into custom duel kits with configurable rules such as building permissions and natural regeneration.
