@@ -600,6 +600,7 @@ impl CommandHandler for PdReloadHandler {
         }
         let _ = service.config.reload();
         let _ = service.messages.reload();
+        tracing::info!("Configuration and message templates reloaded via /pd reload.");
         let msg = service.messages.get_config().reload_success;
         send_feedback_success(&sender, &server, service.messages.component(&msg, &[]));
         Ok(0)
@@ -1731,8 +1732,6 @@ pub fn register_commands(context: &Context) {
     };
     if let Err(e) = context.register_permission(&user_perm) {
         tracing::error!("Failed to register permission {}: {e}", PERM_USER);
-    } else {
-        tracing::info!("Registered permission {}", PERM_USER);
     }
 
     let admin_perm = Permission {
@@ -1743,8 +1742,6 @@ pub fn register_commands(context: &Context) {
     };
     if let Err(e) = context.register_permission(&admin_perm) {
         tracing::error!("Failed to register permission {}: {e}", PERM_ADMIN);
-    } else {
-        tracing::info!("Registered permission {}", PERM_ADMIN);
     }
 
     // 1. /pumpkin-duels (aliases: pd, pumpkinduels, dueladmin, duelsadmin, da)
