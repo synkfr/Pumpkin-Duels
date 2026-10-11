@@ -8,7 +8,7 @@ use duels_core::queue::{DuelChallenge, EnqueueResult, Matchmaker, QueueEntry};
 use duels_gui::{Button, GuiBuilder, GuiSessionRegistry, ItemDescriptor};
 use duels_storage::SqliteStorage;
 use pumpkin_plugin_api::common::Position;
-use pumpkin_plugin_api::player::Player;
+use pumpkin_plugin_api::player::{Player, StatusEffectInstance, StatusEffectType};
 use pumpkin_plugin_api::{Screen, Server};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -441,6 +441,9 @@ impl DuelsService {
             countdown_ticks,
         );
 
+        self.remove_lobby_effects(p1);
+        self.remove_lobby_effects(p2);
+
         kit.apply_to_player(p1);
         kit.apply_to_player(p2);
 
@@ -577,6 +580,7 @@ impl DuelsService {
     pub fn tick_matches(&self, server: &Server) {
         if self.queue_tick.fetch_add(1, Ordering::Relaxed) % 20 == 0 {
             self.tick_queues(server);
+            self.tick_lobby_effects(server);
         }
 
         let mut matches_to_end = Vec::new();
@@ -791,10 +795,13 @@ impl DuelsService {
             .unwrap_or_else(|| player.get_world());
 
         lobby_world.set_game_rule_bool(pumpkin_plugin_api::GameRule::ImmediateRespawn, true);
+        lobby_world.set_game_rule_bool(pumpkin_plugin_api::GameRule::Pvp, false);
 
         player.set_health(20.0);
         player.set_food_level(20);
         player.get_inventory().clear_all();
+        player.clear_effects();
+        self.apply_lobby_effects(player);
 
         player.teleport(
             (cfg.lobby_x, cfg.lobby_y, cfg.lobby_z),
@@ -904,6 +911,35 @@ impl DuelsService {
 
         self.end_match(&match_id, &winner_uuid, server);
         Ok(())
+    }
+
+    pub fn apply_lobby_effects(&self, player: &Player) {
+        player.add_effect(StatusEffectInstance {
+            effect_type: StatusEffectType::Speed,
+            duration: 100_000,
+            amplifier: 1,
+            ambient: true,
+            show_particles: false,
+            show_icon: false,
+        });
+    }
+
+    pub fn remove_lobby_effects(&self, player: &Player) {
+        player.remove_effect(StatusEffectType::Speed);
+    }
+
+    pub fn tick_lobby_effects(&self, server: &Server) {
+        let cfg = self.config.get();
+        if let Some(lobby_world) = server.get_world_by_name(&cfg.lobby_world) {
+            lobby_world.set_game_rule_bool(pumpkin_plugin_api::GameRule::Pvp, false);
+        }
+
+        for player in server.get_all_players() {
+            let p_uuid = player.get_id().to_string();
+            if !self.is_in_match(&p_uuid) && !player.has_effect(StatusEffectType::Speed) {
+                self.apply_lobby_effects(&player);
+            }
+        }
     }
 }
 

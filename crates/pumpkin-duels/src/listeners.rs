@@ -6,6 +6,7 @@ use pumpkin_plugin_api::events::block::{BlockBreakEvent, BlockPlaceEvent};
 use pumpkin_plugin_api::events::dialog::DialogClickActionEvent;
 use pumpkin_plugin_api::events::entity::creature_spawn::CreatureSpawnEvent;
 use pumpkin_plugin_api::events::entity::{EntityDamageEvent, PlayerDeathEvent};
+use pumpkin_plugin_api::events::player::player_join::PlayerJoinEvent;
 use pumpkin_plugin_api::events::player::{
     BedrockFormResponseEvent, InventoryClickEvent, InventoryCloseEvent, PlayerDropItemEvent,
     PlayerInteractEvent, PlayerItemConsumeEvent, PlayerLeaveEvent, PlayerMoveEvent,
@@ -16,8 +17,8 @@ use pumpkin_plugin_api::events_wit::{
     BedrockFormResponseEventData, BlockBreakEventData, BlockPlaceEventData, CreatureSpawnEventData,
     DialogClickActionEventData, EntityDamageEventData, InventoryClickEventData,
     InventoryCloseEventData, PlayerDeathEventData, PlayerDropItemEventData,
-    PlayerInteractEventData, PlayerItemConsumeEventData, PlayerLeaveEventData, PlayerMoveEventData,
-    PlayerRespawnEventData,
+    PlayerInteractEventData, PlayerItemConsumeEventData, PlayerJoinEventData, PlayerLeaveEventData,
+    PlayerMoveEventData, PlayerRespawnEventData,
 };
 use pumpkin_plugin_api::forms::FormResponse;
 use pumpkin_plugin_api::{Context, ItemStackExt, Server};
@@ -104,12 +105,24 @@ impl EventHandler<BlockBreakEvent> for BlockBreakListener {
             let player_uuid = player.get_id().to_string();
             let service = get_service();
 
-            if let Some(session) = service.get_match_by_player(&player_uuid)
-                && !session.kit.rules.allow_build
-            {
-                event.cancelled = true;
-                let msg = service.messages.get_config().cannot_break_arena;
-                player.send_system_message(service.messages.component(&msg, &[]), true);
+            if let Some(session) = service.get_match_by_player(&player_uuid) {
+                if !session.kit.rules.allow_build {
+                    event.cancelled = true;
+                    let msg = service.messages.get_config().cannot_break_arena;
+                    player.send_system_message(service.messages.component(&msg, &[]), true);
+                }
+            } else {
+                let is_admin = matches!(
+                    player.get_permission_level(),
+                    pumpkin_plugin_api::permission::PermissionLevel::Two
+                        | pumpkin_plugin_api::permission::PermissionLevel::Three
+                        | pumpkin_plugin_api::permission::PermissionLevel::Four
+                ) || player.has_permission("pumpkin-duels:duels.admin");
+                if !is_admin {
+                    event.cancelled = true;
+                    let msg = service.messages.get_config().cannot_break_lobby;
+                    player.send_system_message(service.messages.component(&msg, &[]), true);
+                }
             }
         }
         event
@@ -123,12 +136,24 @@ impl EventHandler<BlockPlaceEvent> for BlockPlaceListener {
         let player_uuid = event.player.get_id().to_string();
         let service = get_service();
 
-        if let Some(session) = service.get_match_by_player(&player_uuid)
-            && !session.kit.rules.allow_build
-        {
-            event.cancelled = true;
-            let msg = service.messages.get_config().cannot_break_arena;
-            event.player.send_system_message(service.messages.component(&msg, &[]), true);
+        if let Some(session) = service.get_match_by_player(&player_uuid) {
+            if !session.kit.rules.allow_build {
+                event.cancelled = true;
+                let msg = service.messages.get_config().cannot_break_arena;
+                event.player.send_system_message(service.messages.component(&msg, &[]), true);
+            }
+        } else {
+            let is_admin = matches!(
+                event.player.get_permission_level(),
+                pumpkin_plugin_api::permission::PermissionLevel::Two
+                    | pumpkin_plugin_api::permission::PermissionLevel::Three
+                    | pumpkin_plugin_api::permission::PermissionLevel::Four
+            ) || event.player.has_permission("pumpkin-duels:duels.admin");
+            if !is_admin {
+                event.cancelled = true;
+                let msg = service.messages.get_config().cannot_place_lobby;
+                event.player.send_system_message(service.messages.component(&msg, &[]), true);
+            }
         }
 
         event
@@ -210,6 +235,8 @@ impl EventHandler<PlayerRespawnEvent> for PlayerRespawnListener {
             event.yaw = cfg.lobby_yaw;
             event.pitch = cfg.lobby_pitch;
         }
+        event.player.clear_effects();
+        service.apply_lobby_effects(&event.player);
         event
     }
 }
@@ -342,6 +369,14 @@ impl EventHandler<EntityDamageEvent> for EntityDamageListener {
                     );
                 }
             }
+        } else {
+            let is_lobby_player = server
+                .get_all_players()
+                .into_iter()
+                .any(|p| p.as_entity().get_id() == entity_id);
+            if is_lobby_player {
+                event.cancelled = true;
+            }
         }
 
         event
@@ -462,7 +497,23 @@ pub fn register_listeners(context: &Context) -> Result<(), String> {
         true,
     )?;
 
+    context.register_event_handler(
+        PlayerJoinListener,
+        EventPriority::Normal,
+        false,
+    )?;
+
     Ok(())
+}
+
+struct PlayerJoinListener;
+
+impl EventHandler<PlayerJoinEvent> for PlayerJoinListener {
+    fn handle(&self, _server: Server, event: PlayerJoinEventData) -> PlayerJoinEventData {
+        let service = get_service();
+        service.apply_lobby_effects(&event.player);
+        event
+    }
 }
 
 struct CreatureSpawnListener;
