@@ -48,11 +48,6 @@ impl Plugin for PumpkinDuelsPlugin {
 
     fn on_load(&self, context: Context) -> Result<(), String> {
         let version = env!("CARGO_PKG_VERSION");
-        tracing::info!("==================================================");
-        tracing::info!("  Pumpkin-Duels v{} | Practice Duel Engine", version);
-        tracing::info!("  Target: Pumpkin 0.2.0 | Protocol 777");
-        tracing::info!("==================================================");
-
         let data_folder = context.get_data_folder();
         let service = Arc::new(
             DuelsService::new(data_folder)
@@ -69,58 +64,37 @@ impl Plugin for PumpkinDuelsPlugin {
             service_for_tick.tick_matches(&server);
         });
 
-        let kits = service.storage.list_kits().unwrap_or_default();
-        let kit_names: Vec<String> = kits.iter().map(|k| k.name.clone()).collect();
-        let kits_summary = if kit_names.is_empty() {
-            "0 loaded (use /kit create <name> to add one)".to_string()
-        } else {
-            format!("{} loaded ({})", kits.len(), kit_names.join(", "))
-        };
-
+        let kits_count = service.storage.list_kits().map(|k| k.len()).unwrap_or(0);
         let arenas = service.storage.list_arenas().unwrap_or_default();
-        let arenas_summary = if arenas.is_empty() {
-            "0 configured (use /arena create <name> to set up)".to_string()
-        } else {
-            let enabled = arenas.iter().filter(|a| a.enabled).count();
-            let arena_names: Vec<String> = arenas.iter().map(|a| a.name.clone()).collect();
-            format!(
-                "{} configured, {} enabled ({})",
-                arenas.len(),
-                enabled,
-                arena_names.join(", ")
-            )
-        };
+        let enabled_arenas = arenas.iter().filter(|a| a.enabled).count();
 
-        let cfg = service.config.get();
-        let lobby_summary = format!(
-            "world '{}' at ({:.1}, {:.1}, {:.1})",
-            cfg.lobby_world, cfg.lobby_x, cfg.lobby_y, cfg.lobby_z
+        tracing::info!(
+            "Pumpkin-Duels v{} loaded ({} kit{}, {}/{} arena{} enabled).",
+            version,
+            kits_count,
+            if kits_count == 1 { "" } else { "s" },
+            enabled_arenas,
+            arenas.len(),
+            if arenas.len() == 1 { "" } else { "s" },
         );
 
-        tracing::info!("Storage     : SQLite connected (pumpkin-duels.db)");
-        tracing::info!("Configs     : Loaded config.toml & messages.toml");
-        tracing::info!("Kits        : {}", kits_summary);
-        tracing::info!("Arenas      : {}", arenas_summary);
-        tracing::info!("Lobby Spawn : {}", lobby_summary);
-        tracing::info!("Commands    : /duel, /queue, /leavequeue, /surrender, /ping, /pd, /arena, /kit");
-        tracing::info!("Permissions : pumpkin-duels:duels.use, pumpkin-duels:duels.admin");
-        tracing::info!("Matchmaker  : Online (20 TPS match & queue ticker)");
-        tracing::info!("==================================================");
-        tracing::info!("Pumpkin-Duels v{} loaded and ready for duels!", version);
+        if arenas.is_empty() {
+            tracing::warn!("No arenas configured. Use '/arena create <name>' to get started.");
+        }
+
         Ok(())
     }
 
     fn on_unload(&self, _context: Context) -> Result<(), String> {
         let version = env!("CARGO_PKG_VERSION");
-        tracing::info!("Stopping Pumpkin-Duels v{}...", version);
         let service = DUELS.lock().unwrap().take();
         if let Some(s) = service {
             let active = s.active_matches.lock().unwrap().len();
             if active > 0 {
-                tracing::info!("Terminated {} active match(es) during shutdown.", active);
+                tracing::info!("Terminated {} active match(es).", active);
             }
         }
-        tracing::info!("Pumpkin-Duels v{} disabled successfully.", version);
+        tracing::info!("Pumpkin-Duels v{} disabled.", version);
         Ok(())
     }
 }
