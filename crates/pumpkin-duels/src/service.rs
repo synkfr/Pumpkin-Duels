@@ -515,7 +515,7 @@ impl DuelsService {
                     ("(HH:MM:SS)", &time_str),
                 ],
             );
-            self.messages.component_raw(&raw)
+            self.messages.component_action_bar_raw(&raw)
         } else {
             let more = (entries.len() - 1).to_string();
             let raw = self.messages.format_raw(
@@ -528,7 +528,7 @@ impl DuelsService {
                     ("(HH:MM:SS)", &time_str),
                 ],
             );
-            self.messages.component_raw(&raw)
+            self.messages.component_action_bar_raw(&raw)
         };
 
         Some(comp)

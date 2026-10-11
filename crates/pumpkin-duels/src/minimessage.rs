@@ -9,27 +9,66 @@ struct StyleState {
     underlined: Option<bool>,
     strikethrough: Option<bool>,
     obfuscated: Option<bool>,
+    shadow_color: Option<i64>,
     click_event: Option<(String, String)>,
     hover_event: Option<String>,
 }
 
 pub fn parse_minimessage(input: &str) -> TextComponent {
+    parse_minimessage_with_shadow(input, None)
+}
+
+pub fn parse_minimessage_action_bar(input: &str) -> TextComponent {
+    let comp = parse_minimessage_with_shadow(input, Some(0));
+    comp.shadow_color(pumpkin_plugin_api::common::ArgbColor {
+        a: 0,
+        r: 0,
+        g: 0,
+        b: 0,
+    })
+}
+
+pub fn parse_minimessage_with_shadow(input: &str, default_shadow: Option<i64>) -> TextComponent {
     if !input.contains('<') {
+        if let Some(shadow) = default_shadow {
+            let json_str = json!({
+                "text": "",
+                "shadow_color": shadow,
+                "extra": [
+                    {
+                        "text": input,
+                        "shadow_color": shadow
+                    }
+                ]
+            })
+            .to_string();
+            if let Ok(comp) = TextComponent::from_json(&json_str) {
+                return comp;
+            }
+        }
         if input.contains('§') || input.contains('&') {
             return TextComponent::from_legacy_string(input);
         }
         return TextComponent::text(input);
     }
 
-    let json_str = minimessage_to_json(input);
+    let json_str = minimessage_to_json_with_shadow(input, default_shadow);
     TextComponent::from_json(&json_str).unwrap_or_else(|_| {
         TextComponent::from_legacy_string(input)
     })
 }
 
 pub fn minimessage_to_json(input: &str) -> String {
+    minimessage_to_json_with_shadow(input, None)
+}
+
+pub fn minimessage_to_json_with_shadow(input: &str, default_shadow: Option<i64>) -> String {
     let mut extra: Vec<Value> = Vec::new();
-    let mut style_stack: Vec<StyleState> = vec![StyleState::default()];
+    let initial_style = StyleState {
+        shadow_color: default_shadow,
+        ..Default::default()
+    };
+    let mut style_stack: Vec<StyleState> = vec![initial_style];
     let mut chars = input.chars().peekable();
     let mut buffer = String::new();
 
@@ -59,6 +98,9 @@ pub fn minimessage_to_json(input: &str) -> String {
         }
         if let Some(o) = current_style.obfuscated {
             obj["obfuscated"] = json!(o);
+        }
+        if let Some(sc) = current_style.shadow_color {
+            obj["shadow_color"] = json!(sc);
         }
         if let Some((action, val)) = current_style.click_event {
             obj["clickEvent"] = json!({
@@ -115,11 +157,14 @@ pub fn minimessage_to_json(input: &str) -> String {
 
     flush_buffer(&mut buffer, &mut extra, &style_stack);
 
-    json!({
+    let mut root = json!({
         "text": "",
         "extra": extra
-    })
-    .to_string()
+    });
+    if let Some(sc) = default_shadow {
+        root["shadow_color"] = json!(sc);
+    }
+    root.to_string()
 }
 
 fn is_known_closing_tag(tag: &str) -> bool {
@@ -143,6 +188,8 @@ fn is_known_closing_tag(tag: &str) -> bool {
         || t == "r"
         || t == "click"
         || t == "hover"
+        || t == "shadow"
+        || t == "no_shadow"
 }
 
 fn handle_tag(tag: &str, stack: &mut Vec<StyleState>) -> bool {
@@ -199,8 +246,36 @@ fn handle_tag(tag: &str, stack: &mut Vec<StyleState>) -> bool {
         return true;
     }
 
+    if tag.eq_ignore_ascii_case("shadow:false")
+        || tag.eq_ignore_ascii_case("shadow:none")
+        || tag.eq_ignore_ascii_case("no_shadow")
+        || tag.eq_ignore_ascii_case("!shadow")
+    {
+        current.shadow_color = Some(0);
+        stack.push(current);
+        return true;
+    }
+
+    if tag.eq_ignore_ascii_case("shadow:true") || tag.eq_ignore_ascii_case("shadow") {
+        current.shadow_color = None;
+        stack.push(current);
+        return true;
+    }
+
+    if let Some(rest) = tag.strip_prefix("shadow:") {
+        if let Some(argb) = parse_shadow_color(rest) {
+            current.shadow_color = Some(argb);
+            stack.push(current);
+            return true;
+        }
+    }
+
     if tag.eq_ignore_ascii_case("reset") || tag.eq_ignore_ascii_case("r") {
-        stack.push(StyleState::default());
+        let base_shadow = stack.first().and_then(|s| s.shadow_color);
+        stack.push(StyleState {
+            shadow_color: base_shadow,
+            ..Default::default()
+        });
         return true;
     }
 
@@ -277,6 +352,23 @@ fn normalize_hex(s: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn parse_shadow_color(input: &str) -> Option<i64> {
+    let s = input.trim().trim_matches('\'').trim_matches('"');
+    if s.eq_ignore_ascii_case("false") || s.eq_ignore_ascii_case("none") || s == "0" {
+        return Some(0);
+    }
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() == 6 {
+        let rgb = u32::from_str_radix(hex, 16).ok()?;
+        let argb = 0xFF00_0000 | rgb;
+        return Some(argb as i64);
+    } else if hex.len() == 8 {
+        let argb = u32::from_str_radix(hex, 16).ok()?;
+        return Some(argb as i64);
+    }
+    None
 }
 
 pub fn strip_minimessage(input: &str) -> String {
@@ -390,5 +482,24 @@ mod tests {
         let input = "<color:#00E262><bold>NoDebuff</bold></color>";
         assert_eq!(strip_minimessage(input), "NoDebuff");
         assert_eq!(minimessage_to_legacy(input), "§x§0§0§E§2§6§2§lNoDebuff§r§r");
+    }
+
+    #[test]
+    fn test_action_bar_shadow_disabled() {
+        let json_output = minimessage_to_json_with_shadow(
+            "<color:#A0A0A0>InQueue: </color><color:#00E262>Classic</color>",
+            Some(0),
+        );
+        let val: Value = serde_json::from_str(&json_output).unwrap();
+        assert_eq!(val["shadow_color"], 0);
+        assert_eq!(val["extra"][0]["shadow_color"], 0);
+        assert_eq!(val["extra"][1]["shadow_color"], 0);
+    }
+
+    #[test]
+    fn test_shadow_tag_parsing() {
+        let json_output = minimessage_to_json("<shadow:none>Text</shadow>");
+        let val: Value = serde_json::from_str(&json_output).unwrap();
+        assert_eq!(val["extra"][0]["shadow_color"], 0);
     }
 }

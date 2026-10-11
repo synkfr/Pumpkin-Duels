@@ -109,7 +109,7 @@ impl EventHandler<BlockBreakEvent> for BlockBreakListener {
                 if !session.kit.rules.allow_build {
                     event.cancelled = true;
                     let msg = service.messages.get_config().cannot_break_arena;
-                    player.send_system_message(service.messages.component(&msg, &[]), true);
+                    player.send_system_message(service.messages.component_action_bar(&msg, &[]), true);
                 }
             } else {
                 let is_admin = matches!(
@@ -121,7 +121,7 @@ impl EventHandler<BlockBreakEvent> for BlockBreakListener {
                 if !is_admin {
                     event.cancelled = true;
                     let msg = service.messages.get_config().cannot_break_lobby;
-                    player.send_system_message(service.messages.component(&msg, &[]), true);
+                    player.send_system_message(service.messages.component_action_bar(&msg, &[]), true);
                 }
             }
         }
@@ -140,7 +140,7 @@ impl EventHandler<BlockPlaceEvent> for BlockPlaceListener {
             if !session.kit.rules.allow_build {
                 event.cancelled = true;
                 let msg = service.messages.get_config().cannot_break_arena;
-                event.player.send_system_message(service.messages.component(&msg, &[]), true);
+                event.player.send_system_message(service.messages.component_action_bar(&msg, &[]), true);
             }
         } else {
             let is_admin = matches!(
@@ -152,7 +152,7 @@ impl EventHandler<BlockPlaceEvent> for BlockPlaceListener {
             if !is_admin {
                 event.cancelled = true;
                 let msg = service.messages.get_config().cannot_place_lobby;
-                event.player.send_system_message(service.messages.component(&msg, &[]), true);
+                event.player.send_system_message(service.messages.component_action_bar(&msg, &[]), true);
             }
         }
 
@@ -256,7 +256,7 @@ impl EventHandler<DialogClickActionEvent> for DialogClickActionListener {
         } else if id == "duel:surrender:confirm" {
             let _ = service.surrender_match(player, &server);
         } else if id == "duel:surrender:cancel" {
-            let msg = service.messages.component_raw("<color:#A0A0A0>Surrender cancelled.</color>");
+            let msg = service.messages.component_action_bar_raw("<color:#A0A0A0>Surrender cancelled.</color>");
             player.send_system_message(msg, true);
         } else if let Some(kit_name) = id.strip_prefix("duel:queue:") {
             let _ = service.enqueue(player, kit_name, false, &server);

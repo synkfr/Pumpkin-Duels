@@ -163,6 +163,15 @@ impl MessageService {
         crate::minimessage::parse_minimessage(text)
     }
 
+    pub fn component_action_bar(&self, template: &str, placeholders: &[(&str, &str)]) -> TextComponent {
+        let text = self.format_raw(template, placeholders);
+        crate::minimessage::parse_minimessage_action_bar(&text)
+    }
+
+    pub fn component_action_bar_raw(&self, text: &str) -> TextComponent {
+        crate::minimessage::parse_minimessage_action_bar(text)
+    }
+
     pub fn get_config(&self) -> MessagesConfig {
         self.config_manager.get()
     }
