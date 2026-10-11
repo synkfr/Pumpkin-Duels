@@ -39,6 +39,18 @@ pub fn create_arena_void_world(
 
     let world = server.create_world(&world_name, dimension);
     world.set_chunk_generator(gen_id);
+    world.set_time_of_day(1000);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::AdvanceTime, false);
+    world.set_raining(false);
+    world.set_thundering(false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::AdvanceWeather, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnMobs, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnMonsters, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnPatrols, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnPhantoms, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnWanderingTraders, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnWardens, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::ImmediateRespawn, true);
 
     for x in -10..=10 {
         for z in -10..=10 {

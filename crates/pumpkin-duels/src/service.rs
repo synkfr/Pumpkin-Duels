@@ -453,6 +453,8 @@ impl DuelsService {
                 )
             });
 
+        configure_match_world(&duel_world);
+
         teleport_player(p1, &arena_instance.spawn1, duel_world);
         let duel_world2 = server
             .get_world_by_name(&arena_instance.world_name)
@@ -788,6 +790,8 @@ impl DuelsService {
             .or_else(|| server.get_all_worlds().into_iter().next())
             .unwrap_or_else(|| player.get_world());
 
+        lobby_world.set_game_rule_bool(pumpkin_plugin_api::GameRule::ImmediateRespawn, true);
+
         player.set_health(20.0);
         player.set_food_level(20);
         player.get_inventory().clear_all();
@@ -906,4 +910,25 @@ impl DuelsService {
 fn teleport_player(player: &Player, loc: &ArenaLocation, world: pumpkin_plugin_api::World) {
     let pos: Position = (loc.x, loc.y, loc.z);
     player.teleport(pos, Some(loc.yaw), Some(loc.pitch), world);
+}
+
+fn configure_match_world(world: &pumpkin_plugin_api::World) {
+    world.set_time_of_day(1000);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::AdvanceTime, false);
+    world.set_raining(false);
+    world.set_thundering(false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::AdvanceWeather, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnMobs, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnMonsters, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnPatrols, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnPhantoms, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnWanderingTraders, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::SpawnWardens, false);
+    world.set_game_rule_bool(pumpkin_plugin_api::GameRule::ImmediateRespawn, true);
+
+    for entity in world.get_entities() {
+        if entity.is_mob() {
+            entity.remove();
+        }
+    }
 }

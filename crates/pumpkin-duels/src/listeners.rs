@@ -4,6 +4,7 @@ use duels_core::match_state::MatchPhase;
 use duels_gui::ClickContext;
 use pumpkin_plugin_api::events::block::{BlockBreakEvent, BlockPlaceEvent};
 use pumpkin_plugin_api::events::dialog::DialogClickActionEvent;
+use pumpkin_plugin_api::events::entity::creature_spawn::CreatureSpawnEvent;
 use pumpkin_plugin_api::events::entity::{EntityDamageEvent, PlayerDeathEvent};
 use pumpkin_plugin_api::events::player::{
     BedrockFormResponseEvent, InventoryClickEvent, InventoryCloseEvent, PlayerDropItemEvent,
@@ -12,7 +13,7 @@ use pumpkin_plugin_api::events::player::{
 };
 use pumpkin_plugin_api::events::{EventHandler, EventPriority};
 use pumpkin_plugin_api::events_wit::{
-    BedrockFormResponseEventData, BlockBreakEventData, BlockPlaceEventData,
+    BedrockFormResponseEventData, BlockBreakEventData, BlockPlaceEventData, CreatureSpawnEventData,
     DialogClickActionEventData, EntityDamageEventData, InventoryClickEventData,
     InventoryCloseEventData, PlayerDeathEventData, PlayerDropItemEventData,
     PlayerInteractEventData, PlayerItemConsumeEventData, PlayerLeaveEventData, PlayerMoveEventData,
@@ -455,7 +456,25 @@ pub fn register_listeners(context: &Context) -> Result<(), String> {
         false,
     )?;
 
+    context.register_event_handler(
+        CreatureSpawnListener,
+        EventPriority::High,
+        true,
+    )?;
+
     Ok(())
+}
+
+struct CreatureSpawnListener;
+
+impl EventHandler<CreatureSpawnEvent> for CreatureSpawnListener {
+    fn handle(&self, _server: Server, mut event: CreatureSpawnEventData) -> CreatureSpawnEventData {
+        let world_name = event.target_world.get_name();
+        if world_name.starts_with("duel_") || world_name.starts_with("arena_") {
+            event.cancelled = true;
+        }
+        event
+    }
 }
 
 struct PlayerItemConsumeListener;
