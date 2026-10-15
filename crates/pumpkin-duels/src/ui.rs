@@ -342,7 +342,6 @@ pub fn init_combat_nametag_and_belowname(p1: &Player, p2: &Player, world: &World
     let p2_below = format_belowname(&msg_cfg.combat_belowname, &p2_heart_str, p2_color, &p2_name);
 
     let world_sb = world.get_scoreboard();
-    world_sb.remove_objective(OBJECTIVE_HEALTH);
     world_sb.add_objective(
         OBJECTIVE_HEALTH,
         crate::minimessage::parse_minimessage("<color:#FF5555>❤</color>"),
@@ -385,7 +384,6 @@ fn setup_single_player_scoreboard(
 ) {
     if let Some(java) = player.as_java() {
         let sb = java.get_scoreboard();
-        sb.remove_objective(OBJECTIVE_HEALTH);
         sb.add_objective(
             OBJECTIVE_HEALTH,
             crate::minimessage::parse_minimessage("<color:#FF5555>❤</color>"),
@@ -408,7 +406,6 @@ fn setup_single_player_scoreboard(
     }
     if let Some(bedrock) = player.as_bedrock() {
         let bsb = bedrock.get_scoreboard();
-        bsb.remove_objective(OBJECTIVE_HEALTH);
         bsb.add_objective(OBJECTIVE_HEALTH, "§c❤", BedrockSortOrder::Descending);
         bsb.set_display_slot(BedrockDisplaySlot::BelowName, OBJECTIVE_HEALTH);
         bsb.update_score(p1_name, OBJECTIVE_HEALTH, p1_score);
@@ -496,15 +493,9 @@ pub fn reset_combat_nametag_and_belowname(player: &Player) {
     player.as_entity().set_custom_name_visible(false);
 
     if let Some(java) = player.as_java() {
-        let sb = java.get_scoreboard();
-        sb.clear_display_slot(DisplaySlot::BelowName);
-        sb.remove_objective(OBJECTIVE_HEALTH);
         java.reset_scoreboard();
     }
     if let Some(bedrock) = player.as_bedrock() {
-        let bsb = bedrock.get_scoreboard();
-        bsb.clear_display_slot(BedrockDisplaySlot::BelowName);
-        bsb.remove_objective(OBJECTIVE_HEALTH);
         bedrock.reset_scoreboard();
     }
 }

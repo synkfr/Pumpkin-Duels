@@ -472,7 +472,9 @@ impl DuelsService {
         p1.set_movement_locked(true);
         p2.set_movement_locked(true);
 
-        crate::ui::init_combat_nametag_and_belowname(p1, p2, &p1.get_world());
+        if let Some(match_world) = server.get_world_by_name(&arena_instance.world_name) {
+            crate::ui::init_combat_nametag_and_belowname(p1, p2, &match_world);
+        }
 
         {
             let mut matches = self.active_matches.lock().unwrap();
@@ -635,7 +637,11 @@ impl DuelsService {
                                 matches_to_end.push((id.clone(), session.player2_uuid.clone()));
                                 continue;
                             }
-                            crate::ui::update_combat_health(p1, p1.get_health(), p2_opt.as_ref(), &p1.get_world());
+                            let world = match server.get_world_by_name(&session.arena.world_name) {
+                                Some(w) => w,
+                                None => p1.get_world(),
+                            };
+                            crate::ui::update_combat_health(p1, p1.get_health(), p2_opt.as_ref(), &world);
                         }
                         if let Some(ref p2) = p2_opt {
                             let pos = p2.get_position();
@@ -643,7 +649,11 @@ impl DuelsService {
                                 matches_to_end.push((id.clone(), session.player1_uuid.clone()));
                                 continue;
                             }
-                            crate::ui::update_combat_health(p2, p2.get_health(), p1_opt.as_ref(), &p2.get_world());
+                            let world = match server.get_world_by_name(&session.arena.world_name) {
+                                Some(w) => w,
+                                None => p2.get_world(),
+                            };
+                            crate::ui::update_combat_health(p2, p2.get_health(), p1_opt.as_ref(), &world);
                         }
                     }
                     MatchPhase::Ended { .. } => {}
@@ -777,7 +787,6 @@ impl DuelsService {
             if let Some(w) = server.get_world_by_name(&session.arena.world_name) {
                 let sb = w.get_scoreboard();
                 sb.clear_display_slot(pumpkin_plugin_api::wit::pumpkin::plugin::scoreboard::DisplaySlot::BelowName);
-                sb.remove_objective(crate::ui::OBJECTIVE_HEALTH);
             }
 
             let _ = self.arena_manager.destroy_instance(server, &session.arena);
